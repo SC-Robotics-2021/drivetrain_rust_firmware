@@ -6,14 +6,19 @@ use cortex_m;
 use cortex_m_rt::entry;
 // Halt on panic
 use panic_semihosting as _;
-use stm32f4xx_hal::{prelude::*, pwm, stm32};
+use stm32f4xx_hal::{delay as hal_delay, prelude::*, pwm, stm32, };
 
 #[entry]
 fn main() -> ! {
-    if let Some(dp) = stm32::Peripherals::take() {
+    if let (Some(dp), Some(cp)) = (
+        stm32::Peripherals::take(),
+        cortex_m::peripheral::Peripherals::take(),
+    ) {
         // Set up the system clock.
         let rcc = dp.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
+
+        let mut delay = hal_delay::Delay::new(cp.SYST, clocks);
 
         let gpioa = dp.GPIOA.split();
         let channels = (
@@ -21,7 +26,7 @@ fn main() -> ! {
             gpioa.pa9.into_alternate_af1(),
         );
         // configure TIM1 for PWM
-        let pwm = pwm::tim1(dp.TIM1, channels, clocks, 500.hz());
+        let pwm = pwm::tim1(dp.TIM1, channels, clocks, 501.hz());
         // each TIM has two channels
         let (mut ch1, mut ch2) = pwm;
         let max_duty = ch1.get_max_duty();
@@ -32,11 +37,18 @@ fn main() -> ! {
         ch2.set_duty(to_scale(max_duty, min_duty, 0.0));
         ch1.enable();
         ch2.enable();
+        loop {
+            ch2.set_duty(to_scale(max_duty, min_duty, 0.25));
+            delay.delay_ms(1000_u32);
+            ch2.set_duty(to_scale(max_duty, min_duty, -0.25));
+            delay.delay_ms(1000_u32);
+            ch2.set_duty(to_scale(max_duty, min_duty, 0.0));
+            delay.delay_ms(1000_u32);
+
+        }
     }
 
-    loop {
-
-    }
+    loop {}
 }
 
 /// Convert `value` from [-1,1] to [new_min, new_max]
