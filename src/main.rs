@@ -3,21 +3,24 @@
 #![no_std]
 
 use cortex_m_semihosting::hprintln;
-use heapless;
-use heapless::consts::U64;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::Interrupt;
-use stm32f4xx_hal::{gpio, pwm, prelude::*};
-type PWM0_CHANNEL = gpio::gpioa::PA8<gpio::Alternate<gpio::AF1>>;
+use rtfm::cyccnt::Instant;
+use stm32f4::stm32f446::{Interrupt, TIM1};
+use stm32f4xx_hal::{prelude::*, pwm, timer};
+
+type PWM0_CHANNEL = pwm::PwmChannels<TIM1, pwm::C1>;
 
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
+    struct Resources {
+        pwm0: PWM0_CHANNEL
+    }
     #[init]
-    fn init(context: init::Context) {
+    fn init(context: init::Context) -> init::LateResources {
         hprintln!("hello world!").unwrap();
-        let mut rcc = context.device.RCC.constrain();
+        let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
 
         let gpioa = context.device.GPIOA.split();
@@ -27,14 +30,26 @@ const APP: () = {
         );
         // configure TIM1 for PWM
         let pwm = pwm::tim1(context.device.TIM1, channels, clocks, 501.hz());
+
         // each TIM has two channels
         let (mut ch1, _ch2) = pwm;
         let max_duty = ch1.get_max_duty();
         let min_duty = max_duty / 2;
 
+        let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
+        timer.listen(timer::Event::TimeOut);
+
         ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
         ch1.enable();
+        init::LateResources {
+            pwm0: ch1
+        }
     }
+    #[task(binds = TIM3)]
+    fn tim3_interrupt(_: tim3_interrupt::Context) {
+        hprintln!("tick!").unwrap();
+    }
+
 };
 
 /// Convert `value` from [-1,1] to [new_min, new_max]
