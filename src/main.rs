@@ -77,8 +77,9 @@ const APP: () = {
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
         );
-        let mut spi1_nss = gpioa.pa1.into_push_pull_output(); // SPI1_NSS
-        spi1_nss.set_high().unwrap();
+        // chip select for encoder 1 chip 1
+        let mut encoder1_ss1 = gpioa.pa1.into_push_pull_output(); // SPI1_NSS
+        encoder1_ss1.set_high().unwrap();
 
         let spi1_channels = (
             gpioa.pa5.into_alternate_af5(),  // SPI1_SCK,
@@ -88,13 +89,13 @@ const APP: () = {
         // configure TIM1 for PWM
         let pwm = pwm::tim1(context.device.TIM1, pwm_channels, clocks, 501.hz());
         // initialize the first of the SPI interfaces to monitor speed
-        let mut spi1 = spi::Spi::spi1(context.device.SPI1,
+        let spi1 = spi::Spi::spi1(context.device.SPI1,
                                       spi1_channels,
                                       spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-                                      Hertz(4_166_000*2), clocks,
+                                      Hertz(14_000_000), clocks,
         );
 
-        let wrapper = Encoder1Wrapper { spi: spi1, ss: spi1_nss, delay };
+        let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, delay };
         let mut encoder1 = Ls7366::new(wrapper).unwrap();
         let initial_count = encoder1.get_count().unwrap();
         // each TIM has two channels
