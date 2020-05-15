@@ -3,8 +3,6 @@
 #![no_std]
 
 use cortex_m_semihosting::hprintln;
-use embedded_hal::blocking::spi::{Transfer, Write};
-use embedded_spi::wrapper::Wrapper;
 use ls7366::Ls7366;
 // Halt on panic
 use panic_semihosting as _;
@@ -12,7 +10,7 @@ use rtfm::app;
 use stm32f4::stm32f446::TIM1;
 use stm32f4xx_hal::{delay, prelude::*, pwm, spi, timer};
 use stm32f4xx_hal::delay::Delay;
-use stm32f4xx_hal::time::{Hertz, MegaHertz};
+use stm32f4xx_hal::time::Hertz;
 
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
@@ -37,7 +35,6 @@ impl embedded_hal::blocking::spi::Transfer<u8> for Encoder1Wrapper {
     type Error = stm32f4xx_hal::spi::Error;
 
     fn transfer<'w>(&mut self, words: &'w mut [u8]) -> Result<&'w [u8], Self::Error> {
-        self.ss.set_high().unwrap();
         self.ss.set_low().unwrap();
         let result = self.spi.transfer(words)?;
         self.ss.set_high().unwrap();
@@ -49,7 +46,6 @@ impl embedded_hal::blocking::spi::Write<u8> for Encoder1Wrapper {
     type Error = stm32f4xx_hal::spi::Error;
 
     fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
-        self.ss.set_high().unwrap();
         self.ss.set_low().unwrap();
 
         let result = self.spi.write(words)?;
@@ -96,8 +92,7 @@ const APP: () = {
         );
 
         let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, delay };
-        let mut encoder1 = Ls7366::new(wrapper).unwrap();
-        let initial_count = encoder1.get_count().unwrap();
+        let encoder1 = Ls7366::new(wrapper).unwrap();
         // each TIM has two channels
         let (mut ch1, _ch2) = pwm;
         let max_duty = ch1.get_max_duty();

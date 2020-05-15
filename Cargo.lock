@@ -57,12 +57,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfg-if"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
-
-[[package]]
 name = "cortex-m"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -139,16 +133,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-spi"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a7b85269a2972c13ed61dfd5760755a2c61060dcf71cda88031deaa6d8da8cc"
-dependencies = [
- "embedded-hal",
- "log",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -194,15 +178,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "076f042c5b7b98f31d205f1249267e12a6518c1481e9dae9764af19b707d2292"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "log"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14b6052be84e6b71ab17edffc2eeabf5c2c3ae1fdb464aae35ac50c67a44e1f7"
-dependencies = [
- "cfg-if",
 ]
 
 [[package]]
@@ -287,7 +262,6 @@ dependencies = [
  "cortex-m-rtfm",
  "cortex-m-semihosting",
  "embedded-hal",
- "embedded-spi",
  "heapless",
  "ls7366",
  "nb",
