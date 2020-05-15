@@ -29,7 +29,7 @@ type Encoder1 = Ls7366<Encoder1Wrapper>;
 pub struct Encoder1Wrapper {
     spi: Spi1Underlying,
     ss: Spi1SS1,
-    delay: Delay
+    delay: Delay,
 }
 
 impl embedded_hal::blocking::spi::Transfer<u8> for Encoder1Wrapper {
@@ -77,7 +77,7 @@ const APP: () = {
             gpioa.pa9.into_alternate_af1(),
         );
         let mut spi1_nss = gpioa.pa1.into_push_pull_output(); // SPI1_NSS
-        spi1_nss.set_low().unwrap();
+        spi1_nss.set_high().unwrap();
 
         let spi1_channels = (
             gpioa.pa5.into_alternate_af5(),  // SPI1_SCK,
@@ -87,13 +87,9 @@ const APP: () = {
         // configure TIM1 for PWM
         let pwm = pwm::tim1(context.device.TIM1, pwm_channels, clocks, 501.hz());
         // initialize the first of the SPI interfaces to monitor speed
-        let spi1 = spi::Spi::spi1(context.device.SPI1, spi1_channels, spi::Mode {
-            polarity: spi::Polarity::IdleLow,
-            phase: spi::Phase::CaptureOnFirstTransition,
-        }, 14_100_000.hz(),
-                                  clocks,
+        let spi1 = spi::Spi::spi1(context.device.SPI1, spi1_channels, spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition }, 14_100_000.hz(), clocks,
         );
-        let wrapper = Encoder1Wrapper { spi: spi1, ss: spi1_nss , delay};
+        let wrapper = Encoder1Wrapper { spi: spi1, ss: spi1_nss, delay };
         let mut encoder1 = Ls7366::new(wrapper).unwrap();
         let initial_count = encoder1.get_count().unwrap();
         hprintln!("initial count:= {:?}", initial_count).unwrap();
