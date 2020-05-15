@@ -17,6 +17,7 @@ stm32f4 = "0.11.0"
 cortex-m-semihosting = "0.3.5"
 heapless = "0.5.5"
 ls7366 = ">=0.2.1"
+embedded-spi = {version = "0.6.1", default-features=false}
 
 [dependencies.stm32f4xx-hal]
 version = "0.8"
