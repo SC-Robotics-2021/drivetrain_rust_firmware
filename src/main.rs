@@ -12,6 +12,7 @@ use rtfm::app;
 use stm32f4::stm32f446::TIM1;
 use stm32f4xx_hal::{delay, prelude::*, pwm, spi, timer};
 use stm32f4xx_hal::delay::Delay;
+use stm32f4xx_hal::time::{Hertz, MegaHertz};
 
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
@@ -87,12 +88,15 @@ const APP: () = {
         // configure TIM1 for PWM
         let pwm = pwm::tim1(context.device.TIM1, pwm_channels, clocks, 501.hz());
         // initialize the first of the SPI interfaces to monitor speed
-        let spi1 = spi::Spi::spi1(context.device.SPI1, spi1_channels, spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition }, 14_100_000.hz(), clocks,
+        let mut spi1 = spi::Spi::spi1(context.device.SPI1,
+                                      spi1_channels,
+                                      spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
+                                      Hertz(4_166_000*2), clocks,
         );
+
         let wrapper = Encoder1Wrapper { spi: spi1, ss: spi1_nss, delay };
         let mut encoder1 = Ls7366::new(wrapper).unwrap();
         let initial_count = encoder1.get_count().unwrap();
-        hprintln!("initial count:= {:?}", initial_count).unwrap();
         // each TIM has two channels
         let (mut ch1, _ch2) = pwm;
         let max_duty = ch1.get_max_duty();
@@ -101,7 +105,7 @@ const APP: () = {
         let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
         timer.listen(timer::Event::TimeOut);
 
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
+        ch1.set_duty(to_scale(max_duty, min_duty, 0.125 / -2.));
         ch1.enable();
         init::LateResources {
             pwm0: ch1,
