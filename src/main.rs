@@ -8,9 +8,10 @@ use ls7366::Ls7366;
 use panic_semihosting as _;
 use rtfm::app;
 use stm32f4::stm32f446::TIM1;
-use stm32f4xx_hal::{delay, prelude::*, pwm, spi, timer};
+use stm32f4xx_hal::{delay, gpio, prelude::*, pwm, serial, spi, timer, interrupt};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::time::Hertz;
+use nb::block;
 
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
@@ -24,6 +25,10 @@ type Spi1Underlying = stm32f4xx_hal::spi::Spi<stm32f4::stm32f446::SPI1, (Spi1Sck
 type Spi1SS1 = stm32f4xx_hal::gpio::gpioa::PA1<stm32f4xx_hal::gpio::Output<stm32f4xx_hal::gpio::PushPull>>;
 // Type of the first encoder
 type Encoder1 = Ls7366<Encoder1Wrapper>;
+
+type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
+type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
+type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
 pub struct Encoder1Wrapper {
     spi: Spi1Underlying,
@@ -59,6 +64,7 @@ const APP: () = {
     struct Resources {
         pwm0: Pwm0Channel1,
         spi1: Encoder1,
+        uart4: Uart4,
     }
     #[init]
     fn init(context: init::Context) -> init::LateResources {
@@ -69,6 +75,8 @@ const APP: () = {
         let delay = Delay::new(context.core.SYST, clocks);
 
         let gpioa = context.device.GPIOA.split();
+        let gpioc = context.device.GPIOC.split();
+
         let pwm_channels = (
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
@@ -82,13 +90,37 @@ const APP: () = {
             gpioa.pa6.into_alternate_af5(), // SPI1_MISO
             gpioa.pa7.into_alternate_af5(), // SPI1_MOSI
         );
+        let usart2_channels = (
+            gpioc.pc10.into_alternate_af8(), // UART4_TX
+            gpioc.pc11.into_alternate_af8(), // UART4_RX
+        );
+
+        // establish USART2 device
+        let mut uart4 = serial::Serial::uart4(
+            context.device.UART4,
+            usart2_channels,
+            serial::config::Config {
+                baudrate: 115200.bps(),
+                wordlength: serial::config::WordLength::DataBits8,
+                parity: serial::config::Parity::ParityNone,
+                stopbits: serial::config::StopBits::STOP1,
+            },
+            clocks,
+        ).unwrap();
+        // listen for incoming packets
+        uart4.listen(serial::Event::Rxne);
+        for byte in b"hello from STM32!".iter(){
+           block!( uart4.write(*byte)).unwrap();
+        }
+
+
         // configure TIM1 for PWM
         let pwm = pwm::tim1(context.device.TIM1, pwm_channels, clocks, 501.hz());
         // initialize the first of the SPI interfaces to monitor speed
         let spi1 = spi::Spi::spi1(context.device.SPI1,
-                                      spi1_channels,
-                                      spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-                                      Hertz(14_000_000), clocks,
+                                  spi1_channels,
+                                  spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
+                                  Hertz(14_000_000), clocks,
         );
 
         let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, delay };
@@ -98,6 +130,7 @@ const APP: () = {
         let max_duty = ch1.get_max_duty();
         let min_duty = max_duty / 2;
 
+        // create a periodic timer to check the encoders periodically
         let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
         timer.listen(timer::Event::TimeOut);
 
@@ -106,12 +139,20 @@ const APP: () = {
         init::LateResources {
             pwm0: ch1,
             spi1: encoder1,
+            usart2: uart4,
         }
     }
-    #[task(binds = TIM3, resources = [spi1])]
+    #[task(binds = TIM3, resources = [spi1], priority=3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
+        // handle interrupts from TIM3, telling us to look at the encoders.
         let current_count = context.resources.spi1.get_count().unwrap();
         hprintln!("count: {:?}", current_count).unwrap();
+    }
+    #[task(binds = UART4, resources = [usart2], priority=1)]
+    fn usart2_rxe(context: usart2_rxe::Context) {
+        let value = context.resources.usart2.read().unwrap();
+        hprintln!("read : {:?}", value).unwrap();
+        context.resources.usart2.write(value).unwrap();
     }
 };
 
