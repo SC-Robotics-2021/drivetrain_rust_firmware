@@ -4,14 +4,14 @@
 
 use cortex_m_semihosting::hprintln;
 use ls7366::Ls7366;
+use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
 use stm32f4::stm32f446::TIM1;
-use stm32f4xx_hal::{delay, gpio, prelude::*, pwm, serial, spi, timer, interrupt};
+use stm32f4xx_hal::{delay, gpio, interrupt, prelude::*, pwm, serial, spi, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::time::Hertz;
-use nb::block;
 
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
@@ -109,8 +109,8 @@ const APP: () = {
         ).unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
-        for byte in b"hello from STM32!".iter(){
-           block!( uart4.write(*byte)).unwrap();
+        for byte in b"hello from STM32!".iter() {
+            block!( uart4.write(*byte)).unwrap();
         }
 
 
@@ -139,20 +139,20 @@ const APP: () = {
         init::LateResources {
             pwm0: ch1,
             spi1: encoder1,
-            usart2: uart4,
+            uart4: uart4,
         }
     }
-    #[task(binds = TIM3, resources = [spi1], priority=3)]
+    #[task(binds = TIM3, resources = [spi1], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
         let current_count = context.resources.spi1.get_count().unwrap();
-        hprintln!("count: {:?}", current_count).unwrap();
+        // hprintln!("count: {:?}", current_count).unwrap();
     }
-    #[task(binds = UART4, resources = [usart2], priority=1)]
-    fn usart2_rxe(context: usart2_rxe::Context) {
-        let value = context.resources.usart2.read().unwrap();
-        hprintln!("read : {:?}", value).unwrap();
-        context.resources.usart2.write(value).unwrap();
+    #[task(binds = UART4, resources = [uart4], priority = 10)]
+    fn uart4_on_rxne(context: uart4_on_rxne::Context) {
+        // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
+        let value = context.resources.uart4.read().unwrap();
+        context.resources.uart4.write(value).unwrap();
     }
 };
 
