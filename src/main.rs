@@ -70,10 +70,10 @@ const APP: () = {
         spi1: Encoder1,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
-        count_ne: Option<i64>,
-        count_se: Option<i64>,
-        count_nw: Option<i64>,
-        count_sw: Option<i64>,
+        count_ne: i64,
+        count_se: i64,
+        count_nw: i64,
+        count_sw: i64,
     }
 
     #[init]
@@ -154,17 +154,22 @@ const APP: () = {
             spi1: encoder1,
             uart4: uart4,
             rx_buffer,
-            count_ne: None,
-            count_se: None,
-            count_nw: None,
-            count_sw: None,
+            count_ne: 0,
+            count_se: 0,
+            count_nw: 0,
+            count_sw: 0,
         }
     }
     #[task(binds = TIM3, resources = [spi1, count_ne], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        *context.resources.count_ne =  Some(context.resources.spi1.get_count().unwrap());
-        // hprintln!("count: {:?}", current_count).unwrap();
+        let value = context.resources.spi1.get_count().unwrap();
+        let mut count_ne = context.resources.count_ne;
+        // acquire resource lock to prevent concurrent access while we write to it.
+        count_ne.lock(|count_ne| {
+            // critical section
+            *count_ne = value;
+        });
     }
     #[task(binds = UART4, resources = [uart4, rx_buffer, count_ne], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
@@ -176,12 +181,13 @@ const APP: () = {
             let decoded_len = decode_in_place(context.resources.rx_buffer.deref_mut()).unwrap();
             // Decoded? good, drop everything less than the decoded length (-1 for sentinel)
             context.resources.rx_buffer.truncate(decoded_len - 1);
-            // hprintln!("buffer: {:?}", context.resources.rx_buffer).unwrap();
             for byte in context.resources.rx_buffer.iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
             context.resources.rx_buffer.clear();
-            block!(context.resources.uart4.write(context.resources.count_ne)).unwrap();
+            for byte in context.resources.count_ne.to_be_bytes().iter() {
+                block!(context.resources.uart4.write(*byte)).unwrap();
+            }
         }
     }
 };
