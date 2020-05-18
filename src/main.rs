@@ -188,6 +188,7 @@ const APP: () = {
             for byte in context.resources.count_ne.to_be_bytes().iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
+            block!(context.resources.uart4.write(59)).unwrap();
         }
     }
 };
