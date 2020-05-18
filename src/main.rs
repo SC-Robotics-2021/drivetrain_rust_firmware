@@ -2,17 +2,21 @@
 #![no_main]
 #![no_std]
 
+use core::ops::{Deref, DerefMut};
+
 use cortex_m_semihosting::hprintln;
+use heapless::{consts, Vec, };
 use ls7366::Ls7366;
 use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
 use stm32f4::stm32f446::TIM1;
-use stm32f4xx_hal::{delay, gpio, interrupt, prelude::*, pwm, serial, spi, timer};
+use stm32f4xx_hal::{gpio, prelude::*, pwm, serial, spi, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::time::Hertz;
 
+use cobs::decode_in_place;
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
 // This gets ugly real quick...
@@ -33,7 +37,7 @@ type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 pub struct Encoder1Wrapper {
     spi: Spi1Underlying,
     ss: Spi1SS1,
-    delay: Delay,
+    _delay: Delay,
 }
 
 impl embedded_hal::blocking::spi::Transfer<u8> for Encoder1Wrapper {
@@ -65,7 +69,9 @@ const APP: () = {
         pwm0: Pwm0Channel1,
         spi1: Encoder1,
         uart4: Uart4,
+        rx_buffer: Vec::<u8, consts::U1024>,
     }
+
     #[init]
     fn init(context: init::Context) -> init::LateResources {
         hprintln!("hello world!").unwrap();
@@ -100,7 +106,7 @@ const APP: () = {
             context.device.UART4,
             usart2_channels,
             serial::config::Config {
-                baudrate: 115200.bps(),
+                baudrate: 96000.bps(),
                 wordlength: serial::config::WordLength::DataBits8,
                 parity: serial::config::Parity::ParityNone,
                 stopbits: serial::config::StopBits::STOP1,
@@ -123,7 +129,7 @@ const APP: () = {
                                   Hertz(14_000_000), clocks,
         );
 
-        let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, delay };
+        let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, _delay: delay };
         let encoder1 = Ls7366::new(wrapper).unwrap();
         // each TIM has two channels
         let (mut ch1, _ch2) = pwm;
@@ -136,23 +142,38 @@ const APP: () = {
 
         ch1.set_duty(to_scale(max_duty, min_duty, 0.125 / -2.));
         ch1.enable();
+
+        let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
+
         init::LateResources {
             pwm0: ch1,
             spi1: encoder1,
             uart4: uart4,
+            rx_buffer
         }
     }
     #[task(binds = TIM3, resources = [spi1], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        let current_count = context.resources.spi1.get_count().unwrap();
+        let _current_count = context.resources.spi1.get_count().unwrap();
         // hprintln!("count: {:?}", current_count).unwrap();
     }
-    #[task(binds = UART4, resources = [uart4], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
         let value = context.resources.uart4.read().unwrap();
-        context.resources.uart4.write(value).unwrap();
+        context.resources.rx_buffer.push(value).unwrap();
+        if value == 0x00 {
+            // attempt to decode the buffer in-place
+            let decoded_len = decode_in_place(context.resources.rx_buffer.deref_mut()).unwrap();
+            // Decoded? good, drop everything less than the decoded length (-1 for sentinel)
+            context.resources.rx_buffer.truncate(decoded_len-1);
+            // hprintln!("buffer: {:?}", context.resources.rx_buffer).unwrap();
+            for byte in context.resources.rx_buffer.iter() {
+                block!(context.resources.uart4.write(*byte)).unwrap();
+            }
+            context.resources.rx_buffer.clear();
+        }
     }
 };
 
