@@ -2,10 +2,11 @@
 #![no_main]
 #![no_std]
 
-use core::ops::{Deref, DerefMut};
+use core::ops::DerefMut;
 
+use cobs::decode_in_place;
 use cortex_m_semihosting::hprintln;
-use heapless::{consts, Vec, };
+use heapless::{consts, Vec};
 use ls7366::Ls7366;
 use nb::block;
 // Halt on panic
@@ -16,7 +17,6 @@ use stm32f4xx_hal::{gpio, prelude::*, pwm, serial, spi, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::time::Hertz;
 
-use cobs::decode_in_place;
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
 // This gets ugly real quick...
@@ -70,6 +70,10 @@ const APP: () = {
         spi1: Encoder1,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
+        count_ne: Option<i64>,
+        count_se: Option<i64>,
+        count_nw: Option<i64>,
+        count_sw: Option<i64>,
     }
 
     #[init]
@@ -149,30 +153,35 @@ const APP: () = {
             pwm0: ch1,
             spi1: encoder1,
             uart4: uart4,
-            rx_buffer
+            rx_buffer,
+            count_ne: None,
+            count_se: None,
+            count_nw: None,
+            count_sw: None,
         }
     }
-    #[task(binds = TIM3, resources = [spi1], priority = 3)]
+    #[task(binds = TIM3, resources = [spi1, count_ne], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        let _current_count = context.resources.spi1.get_count().unwrap();
+        *context.resources.count_ne =  Some(context.resources.spi1.get_count().unwrap());
         // hprintln!("count: {:?}", current_count).unwrap();
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, count_ne], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
-        let value = context.resources.uart4.read().unwrap();
-        context.resources.rx_buffer.push(value).unwrap();
-        if value == 0x00 {
+        let rx_byte = context.resources.uart4.read().unwrap();
+        context.resources.rx_buffer.push(rx_byte).unwrap();
+        if rx_byte == 0x00 {
             // attempt to decode the buffer in-place
             let decoded_len = decode_in_place(context.resources.rx_buffer.deref_mut()).unwrap();
             // Decoded? good, drop everything less than the decoded length (-1 for sentinel)
-            context.resources.rx_buffer.truncate(decoded_len-1);
+            context.resources.rx_buffer.truncate(decoded_len - 1);
             // hprintln!("buffer: {:?}", context.resources.rx_buffer).unwrap();
             for byte in context.resources.rx_buffer.iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
             context.resources.rx_buffer.clear();
+            block!(context.resources.uart4.write(context.resources.count_ne)).unwrap();
         }
     }
 };
