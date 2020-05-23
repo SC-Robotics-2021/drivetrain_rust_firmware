@@ -21,47 +21,9 @@ type EncoderNEPinA = gpio::gpioa::PA0<stm32f4xx_hal::gpio::Alternate<stm32f4xx_h
 type EncoderNEPinB = gpio::gpioa::PA1<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
 type EncoderNE = qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>;
 
-// This gets ugly real quick...
-type Spi1Sck = stm32f4xx_hal::gpio::gpioa::PA5<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF5>>;
-type Spi1Miso = stm32f4xx_hal::gpio::gpioa::PA6<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF5>>;
-type Spi1Mosi = stm32f4xx_hal::gpio::gpioa::PA7<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF5>>;
-/// Encoder 1 underlying type
-type Spi1Underlying = stm32f4xx_hal::spi::Spi<stm32f4::stm32f446::SPI1, (Spi1Sck, Spi1Miso, Spi1Mosi)>;
-/// Type for Encoder1's Signal first Select pin
-type Spi1SS1 = stm32f4xx_hal::gpio::gpioa::PA1<stm32f4xx_hal::gpio::Output<stm32f4xx_hal::gpio::PushPull>>;
-
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
-
-pub struct Encoder1Wrapper {
-    spi: Spi1Underlying,
-    ss: Spi1SS1,
-    _delay: Delay,
-}
-
-impl embedded_hal::blocking::spi::Transfer<u8> for Encoder1Wrapper {
-    type Error = stm32f4xx_hal::spi::Error;
-
-    fn transfer<'w>(&mut self, words: &'w mut [u8]) -> Result<&'w [u8], Self::Error> {
-        self.ss.set_low().unwrap();
-        let result = self.spi.transfer(words)?;
-        self.ss.set_high().unwrap();
-        Ok(result)
-    }
-}
-
-impl embedded_hal::blocking::spi::Write<u8> for Encoder1Wrapper {
-    type Error = stm32f4xx_hal::spi::Error;
-
-    fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
-        self.ss.set_low().unwrap();
-
-        let result = self.spi.write(words)?;
-        self.ss.set_high().unwrap();
-        Ok(result)
-    }
-}
 
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
