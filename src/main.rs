@@ -7,18 +7,20 @@ use core::ops::DerefMut;
 use cobs::decode_in_place;
 use cortex_m_semihosting::hprintln;
 use heapless::{consts, Vec};
-use ls7366::Ls7366;
 use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::TIM1;
-use stm32f4xx_hal::{gpio, prelude::*, pwm, serial, spi, timer};
+use stm32f4::stm32f446::{TIM1, TIM2};
+use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
-use stm32f4xx_hal::time::Hertz;
 
 // Type declaration crap so the resources can be shared...
 type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
+type EncoderNEPinA = gpio::gpioa::PA0<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
+type EncoderNEPinB = gpio::gpioa::PA1<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
+type EncoderNE = qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>;
+
 // This gets ugly real quick...
 type Spi1Sck = stm32f4xx_hal::gpio::gpioa::PA5<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF5>>;
 type Spi1Miso = stm32f4xx_hal::gpio::gpioa::PA6<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF5>>;
@@ -27,8 +29,6 @@ type Spi1Mosi = stm32f4xx_hal::gpio::gpioa::PA7<stm32f4xx_hal::gpio::Alternate<s
 type Spi1Underlying = stm32f4xx_hal::spi::Spi<stm32f4::stm32f446::SPI1, (Spi1Sck, Spi1Miso, Spi1Mosi)>;
 /// Type for Encoder1's Signal first Select pin
 type Spi1SS1 = stm32f4xx_hal::gpio::gpioa::PA1<stm32f4xx_hal::gpio::Output<stm32f4xx_hal::gpio::PushPull>>;
-// Type of the first encoder
-type Encoder1 = Ls7366<Encoder1Wrapper>;
 
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
@@ -67,13 +67,13 @@ impl embedded_hal::blocking::spi::Write<u8> for Encoder1Wrapper {
 const APP: () = {
     struct Resources {
         pwm0: Pwm0Channel1,
-        spi1: Encoder1,
+        encoder_ne: EncoderNE,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
-        count_ne: i64,
-        count_se: i64,
-        count_nw: i64,
-        count_sw: i64,
+        count_ne: u32,
+        count_se: u32,
+        count_nw: u32,
+        count_sw: u32,
     }
 
     #[init]
@@ -82,24 +82,21 @@ const APP: () = {
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick
-        let delay = Delay::new(context.core.SYST, clocks);
+        let _delay = Delay::new(context.core.SYST, clocks);
 
         let gpioa = context.device.GPIOA.split();
         let gpioc = context.device.GPIOC.split();
 
-        let pwm_channels = (
+        let motor_pwm_channels = (
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
         );
-        // chip select for encoder 1 chip 1
-        let mut encoder1_ss1 = gpioa.pa1.into_push_pull_output(); // SPI1_NSS
-        encoder1_ss1.set_high().unwrap();
-
-        let spi1_channels = (
-            gpioa.pa5.into_alternate_af5(),  // SPI1_SCK,
-            gpioa.pa6.into_alternate_af5(), // SPI1_MISO
-            gpioa.pa7.into_alternate_af5(), // SPI1_MOSI
+        let encoder_ne_channels: (EncoderNEPinA, EncoderNEPinB) = (
+            gpioa.pa0.into_alternate_af1(),
+            gpioa.pa1.into_alternate_af1(),
         );
+
+
         let usart2_channels = (
             gpioc.pc10.into_alternate_af8(), // UART4_TX
             gpioc.pc11.into_alternate_af8(), // UART4_RX
@@ -124,34 +121,28 @@ const APP: () = {
         }
 
 
-        // configure TIM1 for PWM
-        let pwm = pwm::tim1(context.device.TIM1, pwm_channels, clocks, 501.hz());
-        // initialize the first of the SPI interfaces to monitor speed
-        let spi1 = spi::Spi::spi1(context.device.SPI1,
-                                  spi1_channels,
-                                  spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-                                  Hertz(14_000_000), clocks,
-        );
-
-        let wrapper = Encoder1Wrapper { spi: spi1, ss: encoder1_ss1, _delay: delay };
-        let encoder1 = Ls7366::new(wrapper).unwrap();
+        // configure TIM1 for PWM output
+        let pwm = pwm::tim1(context.device.TIM1, motor_pwm_channels, clocks, 501.hz());
         // each TIM has two channels
         let (mut ch1, _ch2) = pwm;
         let max_duty = ch1.get_max_duty();
         let min_duty = max_duty / 2;
 
+        // configure TIM2 for QEI
+        let encoder_ne = qei::Qei::tim2(context.device.TIM2, encoder_ne_channels);
+
         // create a periodic timer to check the encoders periodically
         let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
         timer.listen(timer::Event::TimeOut);
 
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.125 / -2.));
+        ch1.set_duty(to_scale(max_duty, min_duty, 0.25));
         ch1.enable();
 
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
         init::LateResources {
             pwm0: ch1,
-            spi1: encoder1,
+            encoder_ne,
             uart4: uart4,
             rx_buffer,
             count_ne: 0,
@@ -160,10 +151,10 @@ const APP: () = {
             count_sw: 0,
         }
     }
-    #[task(binds = TIM3, resources = [spi1, count_ne], priority = 3)]
+    #[task(binds = TIM3, resources = [encoder_ne, count_ne], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        let value = context.resources.spi1.get_count().unwrap();
+        let value = context.resources.encoder_ne.count();
         let mut count_ne = context.resources.count_ne;
         // acquire resource lock to prevent concurrent access while we write to it.
         count_ne.lock(|count_ne| {
