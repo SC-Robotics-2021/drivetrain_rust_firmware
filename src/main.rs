@@ -78,6 +78,8 @@ const APP: () = {
         ).unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
+
+        // Hello world!
         for byte in b"hello from STM32!".iter() {
             block!( uart4.write(*byte)).unwrap();
         }
@@ -95,17 +97,20 @@ const APP: () = {
 
         // create a periodic timer to check the encoders periodically
         let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
+        // and be sure to listen for its ticks.
         timer.listen(timer::Event::TimeOut);
 
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.25));
+        // zero motor
+        ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
         ch1.enable();
 
+        // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
         init::LateResources {
             pwm0: ch1,
             encoder_ne,
-            uart4: uart4,
+            uart4,
             rx_buffer,
             count_ne: 0,
             count_se: 0,
@@ -137,7 +142,9 @@ const APP: () = {
             for byte in context.resources.rx_buffer.iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
+            // done with buffer, clear it out
             context.resources.rx_buffer.clear();
+            // temp output is temporary.
             for byte in context.resources.count_ne.to_be_bytes().iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
