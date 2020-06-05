@@ -49,10 +49,15 @@ const APP: () = {
         let gpioa = context.device.GPIOA.split();
         let gpioc = context.device.GPIOC.split();
 
-        let motor_pwm_channels = (
+        let motor_pwm1_channels = (
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
         );
+        let motor_pwm2_channels = (
+            gpioa.pa6.into_alternate_af1(),
+            gpioa.pa7.into_alternate_af1(),
+            );
+
         let encoder_ne_channels: (EncoderNEPinA, EncoderNEPinB) = (
             gpioa.pa0.into_alternate_af1(),
             gpioa.pa1.into_alternate_af1(),
@@ -86,9 +91,11 @@ const APP: () = {
 
 
         // configure TIM1 for PWM output
-        let pwm = pwm::tim1(context.device.TIM1, motor_pwm_channels, clocks, 501.hz());
+        let pwm1 = pwm::tim1(context.device.TIM1, motor_pwm1_channels, clocks, 501.hz());
+        let pwm2 = pwm::tim3(context.device.TIM3, motor_pwm2_channels, clocks, 501.hz());
         // each TIM has two channels
-        let (mut ch1, _ch2) = pwm;
+        let (mut ch1,mut ch2) = pwm1;
+        let (mut ch3, mut ch4) = pwm2;
         let max_duty = ch1.get_max_duty();
         let min_duty = max_duty / 2;
 
@@ -101,8 +108,14 @@ const APP: () = {
         timer.listen(timer::Event::TimeOut);
 
         // zero motor
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
+        ch1.set_duty(to_scale(max_duty, min_duty, 0.25));
+        ch2.set_duty(to_scale(max_duty, min_duty, 0.25));
+        ch3.set_duty(to_scale(max_duty, min_duty, 0.25));
+        ch4.set_duty(to_scale(max_duty, min_duty, 0.25));
+        ch2.enable();
         ch1.enable();
+        ch3.enable();
+        ch4.enable();
 
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
