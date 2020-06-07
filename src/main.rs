@@ -47,15 +47,18 @@ const APP: () = {
         let _delay = Delay::new(context.core.SYST, clocks);
 
         let gpioa = context.device.GPIOA.split();
+        let gpiob = context.device.GPIOB.split();
         let gpioc = context.device.GPIOC.split();
 
+        // TIM1 uses AF1 for pwm channels.
         let motor_pwm1_channels = (
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
         );
+        // TIM3 uses AF2 for pwm channels.
         let motor_pwm2_channels = (
-            gpioa.pa6.into_alternate_af1(),
-            gpioa.pa7.into_alternate_af1(),
+            gpiob.pb6.into_alternate_af2(),
+            gpiob.pb7.into_alternate_af2(),
             );
 
         let encoder_ne_channels: (EncoderNEPinA, EncoderNEPinB) = (
@@ -92,7 +95,7 @@ const APP: () = {
 
         // configure TIM1 for PWM output
         let pwm1 = pwm::tim1(context.device.TIM1, motor_pwm1_channels, clocks, 501.hz());
-        let pwm2 = pwm::tim3(context.device.TIM3, motor_pwm2_channels, clocks, 501.hz());
+        let pwm2 = pwm::tim4(context.device.TIM4, motor_pwm2_channels, clocks, 501.hz());
         // each TIM has two channels
         let (mut ch1,mut ch2) = pwm1;
         let (mut ch3, mut ch4) = pwm2;
@@ -108,10 +111,10 @@ const APP: () = {
         timer.listen(timer::Event::TimeOut);
 
         // zero motor
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.25));
-        ch2.set_duty(to_scale(max_duty, min_duty, 0.25));
-        ch3.set_duty(to_scale(max_duty, min_duty, 0.25));
-        ch4.set_duty(to_scale(max_duty, min_duty, 0.25));
+        ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
+        ch2.set_duty(to_scale(max_duty, min_duty, 0.0));
+        ch3.set_duty(to_scale(max_duty, min_duty, 0.0));
+        ch4.set_duty(to_scale(max_duty, min_duty, 0.0));
         ch2.enable();
         ch1.enable();
         ch3.enable();
@@ -142,7 +145,7 @@ const APP: () = {
             *count_ne = value;
         });
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer, count_ne], priority = 10)]
+    #[task(binds = UART5, resources = [uart4, rx_buffer, count_ne], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
         let rx_byte = context.resources.uart4.read().unwrap();
