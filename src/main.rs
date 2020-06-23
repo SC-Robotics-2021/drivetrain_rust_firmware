@@ -11,16 +11,11 @@ use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::{TIM1, TIM2, TIM3};
+use stm32f4::stm32f446::{TIM2, TIM3};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 
 // Type declaration crap so the resources can be shared...
-type MotorNWChannel = pwm::PwmChannels<TIM3, pwm::C1>;
-type MotorNEChannel = pwm::PwmChannels<TIM3, pwm::C2>;
-type MotorSEChannel = pwm::PwmChannels<TIM3, pwm::C3>;
-type MotorSWChannel = pwm::PwmChannels<TIM3, pwm::C4>;
-
 type EncoderNEPinA = gpio::gpioa::PA0<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
 type EncoderNEPinB = gpio::gpioa::PA1<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
 type EncoderNE = qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>;
@@ -30,10 +25,10 @@ type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
 pub struct MotorPwm {
-    north_west: MotorNWChannel,
-    north_east: MotorNEChannel,
-    south_east: MotorSEChannel,
-    south_west: MotorSWChannel,
+    north_west: pwm::PwmChannels<TIM3, pwm::C1>,
+    north_east: pwm::PwmChannels<TIM3, pwm::C2>,
+    south_east: pwm::PwmChannels<TIM3, pwm::C3>,
+    south_west: pwm::PwmChannels<TIM3, pwm::C4>,
 }
 
 #[app(device = stm32f4::stm32f446, peripherals = true)]
@@ -61,11 +56,6 @@ const APP: () = {
         let gpiob = context.device.GPIOB.split();
         let gpioc = context.device.GPIOC.split();
 
-        // TIM1 uses AF1 for pwm channels.
-        let motor_tim1_channels = (
-            gpioa.pa8.into_alternate_af1(),
-            gpioa.pa9.into_alternate_af1(),
-        );
         // TIM3 uses AF2 for pwm channels.
         let tim3_pwm_channels = (
             gpioc.pc6.into_alternate_af2(), // ch1
@@ -109,8 +99,8 @@ const APP: () = {
         // configure TIM1 for PWM output
         let pwm2 = pwm::tim3(context.device.TIM3, tim3_pwm_channels, clocks, 501.hz());
         // each TIM has two channels
-        let (mut motor_nw, mut motor_ne, mut motor_se, mut motor_sw) = pwm2;
-        let mut motors=  MotorPwm{
+        let (motor_nw, motor_ne, motor_se, motor_sw) = pwm2;
+        let mut motors = MotorPwm{
             north_west: motor_nw,
             north_east: motor_ne,
             south_east: motor_se,
@@ -127,7 +117,7 @@ const APP: () = {
         // and be sure to listen for its ticks.
         timer.listen(timer::Event::TimeOut);
 
-        /// the Midpoint of the motors, which translates to a stop signal
+        // The midpoint of the motors, which translates to a stop signal.
         let stop: u16 = to_scale(max_duty, min_duty, 0.0);
 
         // Initialize drive motors to STOP/IDLE
