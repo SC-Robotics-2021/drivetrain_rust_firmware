@@ -11,12 +11,16 @@ use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::{TIM1, TIM2};
+use stm32f4::stm32f446::{TIM1, TIM2, TIM3};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 
 // Type declaration crap so the resources can be shared...
-type Pwm0Channel1 = pwm::PwmChannels<TIM1, pwm::C1>;
+type MotorNWChannel = pwm::PwmChannels<TIM3, pwm::C1>;
+type MotorNEChannel = pwm::PwmChannels<TIM3, pwm::C2>;
+type MotorSEChannel = pwm::PwmChannels<TIM3, pwm::C3>;
+type MotorSWChannel = pwm::PwmChannels<TIM3, pwm::C4>;
+
 type EncoderNEPinA = gpio::gpioa::PA0<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
 type EncoderNEPinB = gpio::gpioa::PA1<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
 type EncoderNE = qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>;
@@ -25,10 +29,17 @@ type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
+pub struct MotorPwm {
+    north_west: MotorNWChannel,
+    north_east: MotorNEChannel,
+    south_east: MotorSEChannel,
+    south_west: MotorSWChannel,
+}
+
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
     struct Resources {
-        pwm0: Pwm0Channel1,
+        motors: MotorPwm,
         encoder_ne: EncoderNE,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
@@ -51,15 +62,17 @@ const APP: () = {
         let gpioc = context.device.GPIOC.split();
 
         // TIM1 uses AF1 for pwm channels.
-        let motor_pwm1_channels = (
+        let motor_tim1_channels = (
             gpioa.pa8.into_alternate_af1(),
             gpioa.pa9.into_alternate_af1(),
         );
         // TIM3 uses AF2 for pwm channels.
-        let motor_pwm2_channels = (
-            gpiob.pb6.into_alternate_af2(),
-            gpiob.pb7.into_alternate_af2(),
-            );
+        let tim3_pwm_channels = (
+            gpioc.pc6.into_alternate_af2(), // ch1
+            gpioc.pc7.into_alternate_af2(), // ch2
+            gpioc.pc8.into_alternate_af2(), // ch3
+            gpioc.pc9.into_alternate_af2(), // ch4
+        );
 
         let encoder_ne_channels: (EncoderNEPinA, EncoderNEPinB) = (
             gpioa.pa0.into_alternate_af1(),
@@ -94,37 +107,46 @@ const APP: () = {
 
 
         // configure TIM1 for PWM output
-        let pwm1 = pwm::tim1(context.device.TIM1, motor_pwm1_channels, clocks, 501.hz());
-        let pwm2 = pwm::tim4(context.device.TIM4, motor_pwm2_channels, clocks, 501.hz());
+        let pwm2 = pwm::tim3(context.device.TIM3, tim3_pwm_channels, clocks, 501.hz());
         // each TIM has two channels
-        let (mut ch1,mut ch2) = pwm1;
-        let (mut ch3, mut ch4) = pwm2;
-        let max_duty = ch1.get_max_duty();
+        let (mut motor_nw, mut motor_ne, mut motor_se, mut motor_sw) = pwm2;
+        let mut motors=  MotorPwm{
+            north_west: motor_nw,
+            north_east: motor_ne,
+            south_east: motor_se,
+            south_west: motor_sw
+        };
+        let max_duty = motors.north_east.get_max_duty();
         let min_duty = max_duty / 2;
 
         // configure TIM2 for QEI
         let encoder_ne = qei::Qei::tim2(context.device.TIM2, encoder_ne_channels);
 
         // create a periodic timer to check the encoders periodically
-        let mut timer = timer::Timer::tim3(context.device.TIM3, 1.hz(), clocks);
+        let mut timer = timer::Timer::tim4(context.device.TIM4, 1.hz(), clocks);
         // and be sure to listen for its ticks.
         timer.listen(timer::Event::TimeOut);
 
-        // zero motor
-        ch1.set_duty(to_scale(max_duty, min_duty, 0.0));
-        ch2.set_duty(to_scale(max_duty, min_duty, 0.0));
-        ch3.set_duty(to_scale(max_duty, min_duty, 0.0));
-        ch4.set_duty(to_scale(max_duty, min_duty, 0.0));
-        ch2.enable();
-        ch1.enable();
-        ch3.enable();
-        ch4.enable();
+        /// the Midpoint of the motors, which translates to a stop signal
+        let stop: u16 = to_scale(max_duty, min_duty, 0.0);
+
+        // Initialize drive motors to STOP/IDLE
+        // Note: if Break/Coast = TRUE { STOP } else { IDLE }
+        //  - which is set on each individual
+        motors.north_east.set_duty(stop);
+        motors.north_west.set_duty(stop);
+        motors.south_west.set_duty(stop);
+        motors.south_east.set_duty(stop);
+        motors.north_west.enable();
+        motors.north_east.enable();
+        motors.south_west.enable();
+        motors.south_east.enable();
 
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
         init::LateResources {
-            pwm0: ch1,
+            motors,
             encoder_ne,
             uart4,
             rx_buffer,
