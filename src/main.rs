@@ -11,31 +11,48 @@ use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::{TIM2, TIM3};
+use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
+use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
 // Type declaration crap so the resources can be shared...
-type EncoderNEPinA = gpio::gpioa::PA0<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
-type EncoderNEPinB = gpio::gpioa::PA1<stm32f4xx_hal::gpio::Alternate<stm32f4xx_hal::gpio::AF1>>;
-type EncoderNE = qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>;
+// NE: tim2
+type EncoderNEPinA = gpio::gpiob::PB8<Alternate<AF1>>;
+type EncoderNEPinB = gpio::gpiob::PB9<Alternate<AF1>>;
+// NW: tim5
+type EncoderNWPinA = gpio::gpioa::PA0<Alternate<AF2>>;
+type EncoderNWPinB = gpio::gpioa::PA1<Alternate<AF2>>;
+// SE: tim3
+type EncoderSEPinA = gpio::gpioa::PA6<Alternate<AF2>>;
+type EncoderSEPinB = gpio::gpioa::PA7<Alternate<AF2>>;
+// SW: tim4
+type EncoderSWPinA = gpio::gpiob::PB6<Alternate<AF2>>;
+type EncoderSWPinB = gpio::gpiob::PB7<Alternate<AF2>>;
 
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
 pub struct MotorPwm {
-    north_west: pwm::PwmChannels<TIM3, pwm::C1>,
-    north_east: pwm::PwmChannels<TIM3, pwm::C2>,
-    south_east: pwm::PwmChannels<TIM3, pwm::C3>,
-    south_west: pwm::PwmChannels<TIM3, pwm::C4>,
+    north_west: pwm::PwmChannels<TIM1, pwm::C1>,
+    north_east: pwm::PwmChannels<TIM1, pwm::C2>,
+    south_east: pwm::PwmChannels<TIM1, pwm::C3>,
+    south_west: pwm::PwmChannels<TIM1, pwm::C4>,
+}
+
+pub struct MotorEncoders {
+    north_west: qei::Qei<TIM5, (EncoderNWPinA, EncoderNWPinB)>,
+    north_east: qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>,
+    south_east: qei::Qei<TIM3, (EncoderSEPinA, EncoderSEPinB)>,
+    south_west: qei::Qei<TIM4, (EncoderSWPinA, EncoderSWPinB)>,
 }
 
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
     struct Resources {
         motors: MotorPwm,
-        encoder_ne: EncoderNE,
+        encoders: MotorEncoders,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
         count_ne: u32,
@@ -56,17 +73,35 @@ const APP: () = {
         let gpiob = context.device.GPIOB.split();
         let gpioc = context.device.GPIOC.split();
 
-        // TIM3 uses AF2 for pwm channels.
-        let tim3_pwm_channels = (
-            gpioc.pc6.into_alternate_af2(), // ch1
-            gpioc.pc7.into_alternate_af2(), // ch2
-            gpioc.pc8.into_alternate_af2(), // ch3
-            gpioc.pc9.into_alternate_af2(), // ch4
+        // TIM1/2 uses AF1 for pwm channels.
+        let tim1_pwm_channels = (
+            gpioa.pa8.into_alternate_af1(), // ch1 NW
+            gpioa.pa9.into_alternate_af1(), // ch2 NE
+            gpioa.pa10.into_alternate_af1(), // ch3 SE
+            gpioa.pa11.into_alternate_af1(), // ch4 SW
         );
 
+        // AF1 for TIM1/2
+        // NE: TIM2
         let encoder_ne_channels: (EncoderNEPinA, EncoderNEPinB) = (
-            gpioa.pa0.into_alternate_af1(),
-            gpioa.pa1.into_alternate_af1(),
+            gpiob.pb8.into_alternate_af1(),
+            gpiob.pb9.into_alternate_af1(),
+        );
+        // AF2 for TIM3/4/5
+        // NW: TIM5
+        let encoder_nw_channels: (EncoderNWPinA, EncoderNWPinB) = (
+            gpioa.pa0.into_alternate_af2(),
+            gpioa.pa1.into_alternate_af2()
+        );
+        // TIM3
+        let encoder_se_channels: (EncoderSEPinA, EncoderSEPinB) = (
+            gpioa.pa6.into_alternate_af2(),
+            gpioa.pa7.into_alternate_af2()
+        );
+        // TIM4
+        let encoder_sw_channels: (EncoderSWPinA, EncoderSWPinB) = (
+            gpiob.pb6.into_alternate_af2(),
+            gpiob.pb7.into_alternate_af2(),
         );
 
 
@@ -97,23 +132,28 @@ const APP: () = {
 
 
         // configure TIM1 for PWM output
-        let pwm2 = pwm::tim3(context.device.TIM3, tim3_pwm_channels, clocks, 501.hz());
+        let pwm2 = pwm::tim1(context.device.TIM1, tim1_pwm_channels, clocks, 501.hz());
         // each TIM has two channels
         let (motor_nw, motor_ne, motor_se, motor_sw) = pwm2;
-        let mut motors = MotorPwm{
+        let mut motors = MotorPwm {
             north_west: motor_nw,
             north_east: motor_ne,
             south_east: motor_se,
-            south_west: motor_sw
+            south_west: motor_sw,
         };
         let max_duty = motors.north_east.get_max_duty();
         let min_duty = max_duty / 2;
 
-        // configure TIM2 for QEI
-        let encoder_ne = qei::Qei::tim2(context.device.TIM2, encoder_ne_channels);
+        // configure QEI
+        let encoders = MotorEncoders {
+            north_west: qei::Qei::tim5(context.device.TIM5, encoder_nw_channels),
+            north_east: qei::Qei::tim2(context.device.TIM2, encoder_ne_channels),
+            south_east: qei::Qei::tim3(context.device.TIM3, encoder_se_channels),
+            south_west: qei::Qei::tim4(context.device.TIM4, encoder_sw_channels),
+        };
 
         // create a periodic timer to check the encoders periodically
-        let mut timer = timer::Timer::tim4(context.device.TIM4, 1.hz(), clocks);
+        let mut timer = timer::Timer::tim6(context.device.TIM6, 1.hz(), clocks);
         // and be sure to listen for its ticks.
         timer.listen(timer::Event::TimeOut);
 
@@ -137,7 +177,7 @@ const APP: () = {
 
         init::LateResources {
             motors,
-            encoder_ne,
+            encoders,
             uart4,
             rx_buffer,
             count_ne: 0,
@@ -146,10 +186,10 @@ const APP: () = {
             count_sw: 0,
         }
     }
-    #[task(binds = TIM3, resources = [encoder_ne, count_ne], priority = 3)]
+    #[task(binds = TIM3, resources = [encoders, count_ne], priority = 3)]
     fn tim3_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        let value = context.resources.encoder_ne.count();
+        let value = context.resources.encoders.north_east.count();
         let mut count_ne = context.resources.count_ne;
         // acquire resource lock to prevent concurrent access while we write to it.
         count_ne.lock(|count_ne| {
