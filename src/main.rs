@@ -11,7 +11,7 @@ use nb::block;
 // Halt on panic
 use panic_semihosting as _;
 use rtfm::app;
-use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
+use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5, TIM6};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
@@ -43,6 +43,7 @@ pub struct MotorPwm {
     south_west: pwm::PwmChannels<TIM1, pwm::C4>,
 }
 
+// struct holding pointers to the motor encoders
 pub struct MotorEncoders {
     north_west: qei::Qei<TIM5, (EncoderNWPinA, EncoderNWPinB)>,
     north_east: qei::Qei<TIM2, (EncoderNEPinA, EncoderNEPinB)>,
@@ -50,17 +51,25 @@ pub struct MotorEncoders {
     south_west: qei::Qei<TIM4, (EncoderSWPinA, EncoderSWPinB)>,
 }
 
+// struct holding the current* value of the encoders
+// * up to 1 second in lag as this occurs on a 1hz update timer
+pub struct MotorCounts {
+    // these two have 32 bit resolution due to their timer
+    north_west: u32,
+    north_east: u32,
+    // different timer, which only has 16 bit resolution
+    south_east: u16,
+    south_west: u16,
+}
+
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
     struct Resources {
         motors: MotorPwm,
         encoders: MotorEncoders,
+        motor_counts: MotorCounts,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
-        count_ne: u32,
-        count_se: u32,
-        count_nw: u32,
-        count_sw: u32,
     }
 
     #[init]
@@ -177,50 +186,36 @@ const APP: () = {
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
+        let motor_counts = MotorCounts { north_west: 0, north_east: 0, south_east: 0, south_west: 0 };
+
         init::LateResources {
             motors,
             encoders,
+            motor_counts,
             uart4,
             rx_buffer,
-            count_ne: 0,
-            count_se: 0,
-            count_nw: 0,
-            count_sw: 0,
         }
     }
-    #[task(binds = TIM6, resources = [encoders, count_ne], priority = 3)]
-    fn tim6_interrupt(context: tim3_interrupt::Context) {
+    #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
+    fn tim6_interrupt(context: tim6_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
         // acquire all encoder states FIRST to ensure an accurate snapshot
         // as it may take several cycles with all the locks leading to desynchronized counts.
-        let ne_current = context.resources.encoder.north_east.count();
-        let se_current = context.resources.encoder.south_east.count();
-        let nw_current = context.resources.encoder.north_west.count();
-        let sw_current = context.resources.encoder.south_west.count();
-        let mut count_ne_ptr = context.resources.count_ne;
-        let mut count_se_ptr = context.resources.count_se;
-        let mut count_nw_ptr = context.resources.count_nw;
-        let mut count_sw_ptr = context.resources.count_sw;
-        // Critcal sections, locks prevent concurrent access.
-        // each shared object has its own lock...
-        count_ne_ptr.lock(|count_ne_ptr| {
+        let ne_current = context.resources.encoders.north_east.count();
+        let se_current = context.resources.encoders.south_east.count();
+        let nw_current = context.resources.encoders.north_west.count();
+        let sw_current = context.resources.encoders.south_west.count();
+        let mut counts_ptr = context.resources.motor_counts;
+        // prevent concurrent access while these variables are getting updated.
+        counts_ptr.lock(|counts_ptr| {
             // critical section
-            *count_ne_ptr = ne_current
-        });
-        count_se_ptr.lock(|count_se_ptr| {
-            // critical section
-            *count_se_ptr = se_current
-        });
-        count_nw_ptr.lock(|count_nw_ptr| {
-            // critical section
-            *count_nw_ptr = nw_current
-        });
-        count_sw_ptr.lock(|count_sw_ptr| {
-            // critical section
-            *count_sw_ptr = sw_current
+            counts_ptr.north_east = ne_current;
+            counts_ptr.south_east = se_current;
+            counts_ptr.north_west = nw_current;
+            counts_ptr.south_west = sw_current;
         });
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer, count_ne], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
         let rx_byte = context.resources.uart4.read().unwrap();
@@ -236,7 +231,7 @@ const APP: () = {
             // done with buffer, clear it out
             context.resources.rx_buffer.clear();
             // temp output is temporary.
-            for byte in context.resources.count_ne.to_be_bytes().iter() {
+            for byte in context.resources.motor_counts.north_east.to_be_bytes().iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
             block!(context.resources.uart4.write(59)).unwrap();
