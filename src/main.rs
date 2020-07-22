@@ -38,6 +38,8 @@ type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
+type BufferType = heapless::Vec<u8, heapless::consts::U32>;
+
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
     north_east: pwm::PwmChannels<TIM1, pwm::C2>,
@@ -232,11 +234,8 @@ const APP: () = {
                         state: -1,
                         data: heapless::Vec::new(),
                     };
-                    let buffer = &mut [0u8; 32];
-                    let encoded = serialize_with_flavor::<protocol::Response, flavors::Cobs<flavors::Slice>, &mut [u8]>(
-                        &response, flavors::Cobs::try_new(flavors::Slice::new(buffer)).unwrap(),
-                    ).unwrap();
-                    for byte in encoded {
+                    let buf = encode_response(&response);
+                    for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
@@ -248,11 +247,8 @@ const APP: () = {
                                 state: request.state,
                                 data: Vec::new(),
                             };
-                            let buffer = &mut [0u8; 32];
-                            let encoded = serialize_with_flavor::<protocol::Response, flavors::Cobs<flavors::Slice>, &mut [u8]>(
-                                &response, flavors::Cobs::try_new(flavors::Slice::new(buffer)).unwrap(),
-                            ).unwrap();
-                            for byte in encoded {
+                            let buf = encode_response(&response);
+                            for byte in buf.iter() {
                                 block!(context.resources.uart4.write(*byte)).unwrap()
                             }
                         }
@@ -274,6 +270,13 @@ const APP: () = {
         }
     }
 };
+
+
+fn encode_response(response: &Response) -> BufferType {
+    serialize_with_flavor::<protocol::Response, flavors::Cobs<flavors::HVec<heapless::consts::U32>>, BufferType>(
+        &response, flavors::Cobs::try_new(flavors::HVec::default()).unwrap(),
+    ).unwrap()
+}
 
 /// Convert `value` from [-1,1] to [new_min, new_max]
 fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
