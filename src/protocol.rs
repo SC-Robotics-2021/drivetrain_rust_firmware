@@ -1,5 +1,11 @@
 use heapless;
+use heapless::consts::U32;
+use heapless::Vec;
+use postcard::flavors;
+use postcard::serialize_with_flavor;
 use serde::{Deserialize, Serialize};
+
+type BufferType = Vec<u8, U32>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 // Request kind
@@ -50,5 +56,13 @@ pub struct Response {
     pub(crate) status: Status,
     pub(crate) state: i32,
     pub(crate) data: heapless::Vec<u8, heapless::consts::U32>,
+}
+
+impl Response {
+    pub fn encode(&self) -> BufferType {
+        serialize_with_flavor::<Response, flavors::Cobs<flavors::HVec<heapless::consts::U32>>, BufferType>(
+            self, flavors::Cobs::try_new(flavors::HVec::default()).unwrap(),
+        ).unwrap()
+    }
 }
 
