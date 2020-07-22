@@ -4,19 +4,21 @@
 
 use core::ops::DerefMut;
 
-use cobs::decode_in_place;
 use cortex_m_semihosting::hprintln;
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
 use panic_semihosting as _;
+use postcard::{Error, flavors, from_bytes_cobs, serialize_with_flavor};
 use rtfm::app;
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5, TIM6};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
-mod postcards;
+use crate::protocol::{Request, RequestKind, Response};
+
+mod protocol;
 
 // Type declaration crap so the resources can be shared...
 // NE: tim2
@@ -178,6 +180,7 @@ const APP: () = {
         motors.north_west.set_duty(stop);
         motors.south_west.set_duty(stop);
         motors.south_east.set_duty(stop);
+        // Enable control signal output. 
         motors.north_west.enable();
         motors.north_east.enable();
         motors.south_west.enable();
@@ -221,10 +224,43 @@ const APP: () = {
         let rx_byte = context.resources.uart4.read().unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            // attempt to decode the buffer in-place
-            let decoded_len = decode_in_place(context.resources.rx_buffer.deref_mut()).unwrap();
-            // Decoded? good, drop everything less than the decoded length (-1 for sentinel)
-            context.resources.rx_buffer.truncate(decoded_len - 1);
+            let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
+            match request {
+                Err(_) => {
+                    let response = protocol::Response {
+                        status: protocol::Status::DecodeError,
+                        state: -1,
+                        data: heapless::Vec::new(),
+                    };
+                    let buffer = &mut [0u8; 32];
+                    let encoded = serialize_with_flavor::<protocol::Response, flavors::Cobs<flavors::Slice>, &mut [u8]>(
+                        &response, flavors::Cobs::try_new(flavors::Slice::new(buffer)).unwrap(),
+                    ).unwrap();
+                    for byte in encoded {
+                        block!(context.resources.uart4.write(*byte)).unwrap()
+                    }
+                }
+                Ok(request) => {
+                    match request.kind {
+                        _ => {
+                            let response = Response {
+                                status: protocol::Status::Unimplemented,
+                                state: request.state,
+                                data: Vec::new(),
+                            };
+                            let buffer = &mut [0u8; 32];
+                            let encoded = serialize_with_flavor::<protocol::Response, flavors::Cobs<flavors::Slice>, &mut [u8]>(
+                                &response, flavors::Cobs::try_new(flavors::Slice::new(buffer)).unwrap(),
+                            ).unwrap();
+                            for byte in encoded {
+                                block!(context.resources.uart4.write(*byte)).unwrap()
+                            }
+                        }
+                    }
+                }
+            }
+
+            context.resources.rx_buffer.truncate(0);
             for byte in context.resources.rx_buffer.iter() {
                 block!(context.resources.uart4.write(*byte)).unwrap();
             }
