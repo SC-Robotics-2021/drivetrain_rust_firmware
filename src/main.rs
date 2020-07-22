@@ -16,6 +16,8 @@ use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
+mod postcards;
+
 // Type declaration crap so the resources can be shared...
 // NE: tim2
 type EncoderNEPinA = gpio::gpiob::PB8<Alternate<AF1>>;
@@ -186,18 +188,39 @@ const APP: () = {
             count_sw: 0,
         }
     }
-    #[task(binds = TIM3, resources = [encoders, count_ne], priority = 3)]
-    fn tim3_interrupt(context: tim3_interrupt::Context) {
+    #[task(binds = TIM6, resources = [encoders, count_ne], priority = 3)]
+    fn tim6_interrupt(context: tim3_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
-        let value = context.resources.encoders.north_east.count();
-        let mut count_ne = context.resources.count_ne;
-        // acquire resource lock to prevent concurrent access while we write to it.
-        count_ne.lock(|count_ne| {
+        // acquire all encoder states FIRST to ensure an accurate snapshot
+        // as it may take several cycles with all the locks leading to desynchronized counts.
+        let ne_current = context.resources.encoder.north_east.count();
+        let se_current = context.resources.encoder.south_east.count();
+        let nw_current = context.resources.encoder.north_west.count();
+        let sw_current = context.resources.encoder.south_west.count();
+        let mut count_ne_ptr = context.resources.count_ne;
+        let mut count_se_ptr = context.resources.count_se;
+        let mut count_nw_ptr = context.resources.count_nw;
+        let mut count_sw_ptr = context.resources.count_sw;
+        // Critcal sections, locks prevent concurrent access.
+        // each shared object has its own lock...
+        count_ne_ptr.lock(|count_ne_ptr| {
             // critical section
-            *count_ne = value;
+            *count_ne_ptr = ne_current
+        });
+        count_se_ptr.lock(|count_se_ptr| {
+            // critical section
+            *count_se_ptr = se_current
+        });
+        count_nw_ptr.lock(|count_nw_ptr| {
+            // critical section
+            *count_nw_ptr = nw_current
+        });
+        count_sw_ptr.lock(|count_sw_ptr| {
+            // critical section
+            *count_sw_ptr = sw_current
         });
     }
-    #[task(binds = UART5, resources = [uart4, rx_buffer, count_ne], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, count_ne], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
         let rx_byte = context.resources.uart4.read().unwrap();
