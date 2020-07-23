@@ -1,6 +1,7 @@
 #![deny(unsafe_code)]
 #![no_main]
 #![no_std]
+#![allow(unused_imports)]
 
 use core::ops::DerefMut;
 
@@ -11,7 +12,7 @@ use nb::block;
 use panic_semihosting as _;
 use postcard::{Error, flavors, from_bytes_cobs, serialize_with_flavor};
 use rtfm::app;
-use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5, TIM6};
+use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
@@ -19,6 +20,7 @@ use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 use crate::protocol::{Request, RequestKind, Response};
 
 mod protocol;
+// use protocol::AsCobs;
 
 // Type declaration crap so the resources can be shared...
 // NE: tim2
@@ -46,6 +48,32 @@ pub struct MotorPwm {
     south_west: pwm::PwmChannels<TIM1, pwm::C4>,
 }
 
+impl MotorPwm {
+    pub fn set_right_speed(&mut self, target: f32) {
+        let (max_duty, min_duty) = self.get_bounds();
+        let setpoint = to_scale(max_duty, min_duty, target);
+
+        self.north_east.set_duty(setpoint);
+        self.south_east.set_duty(setpoint);
+    }
+    pub fn set_left_speed(&mut self, target: f32) {
+        let (max_duty, min_duty) = self.get_bounds();
+        let setpoint = to_scale(max_duty, min_duty, target);
+        self.north_west.set_duty(setpoint);
+        self.south_west.set_duty(setpoint);
+    }
+    pub fn set_all_speed(&mut self, target: f32) {
+        self.set_left_speed(target);
+        self.set_right_speed(target);
+    }
+
+    fn get_bounds(&self) -> (u16, u16) {
+        let max_duty = self.north_west.get_max_duty();
+        let min_duty = max_duty / 2;
+        (max_duty, min_duty)
+    }
+}
+
 // struct holding pointers to the motor encoders
 pub struct MotorEncoders {
     north_west: qei::Qei<TIM5, (EncoderNWPinA, EncoderNWPinB)>,
@@ -54,23 +82,12 @@ pub struct MotorEncoders {
     south_west: qei::Qei<TIM4, (EncoderSWPinA, EncoderSWPinB)>,
 }
 
-// struct holding the current* value of the encoders
-// * up to 1 second in lag as this occurs on a 1hz update timer
-pub struct MotorCounts {
-    // these two have 32 bit resolution due to their timer
-    north_west: u32,
-    north_east: u32,
-    // different timer, which only has 16 bit resolution
-    south_east: u16,
-    south_west: u16,
-}
-
 #[app(device = stm32f4::stm32f446, peripherals = true)]
 const APP: () = {
     struct Resources {
         motors: MotorPwm,
         encoders: MotorEncoders,
-        motor_counts: MotorCounts,
+        motor_counts: protocol::MotorCounts,
         uart4: Uart4,
         rx_buffer: Vec::<u8, consts::U1024>,
     }
@@ -181,7 +198,7 @@ const APP: () = {
         motors.north_west.set_duty(stop);
         motors.south_west.set_duty(stop);
         motors.south_east.set_duty(stop);
-        // Enable control signal output. 
+        // Enable control signal output.
         motors.north_west.enable();
         motors.north_east.enable();
         motors.south_west.enable();
@@ -190,7 +207,7 @@ const APP: () = {
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
-        let motor_counts = MotorCounts { north_west: 0, north_east: 0, south_east: 0, south_west: 0 };
+        let motor_counts = protocol::MotorCounts { north_west: 0, north_east: 0, south_east: 0, south_west: 0 };
 
         init::LateResources {
             motors,
@@ -219,7 +236,7 @@ const APP: () = {
             counts_ptr.south_west = sw_current;
         });
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
         let rx_byte = context.resources.uart4.read().unwrap();
@@ -233,24 +250,43 @@ const APP: () = {
                         state: -1,
                         data: heapless::Vec::new(),
                     };
-                    let buf = response.encode();
+                    let buf = response.encode_cobs();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
                 Ok(request) => {
-                    match request.kind {
+                    let response = match request.kind {
+                        protocol::RequestKind::GetMotorEncoderCounts => {
+                            let counts = context.resources.motor_counts.encode_cobs();
+                            protocol::Response {
+                                status: protocol::Status::OK,
+                                state: request.state,
+                                data: counts,
+                            }
+                        }
+                        protocol::RequestKind::SetSpeed { target } => {
+                            context.resources.motors.set_all_speed(target);
+
+                            protocol::Response {
+                                status: protocol::Status::OK,
+                                state: request.state,
+                                data: heapless::Vec::new(),
+                            }
+                        }
+
                         _ => {
-                            let response = Response {
+                            Response {
                                 status: protocol::Status::Unimplemented,
                                 state: request.state,
                                 data: Vec::new(),
-                            };
-                            let buf = response.encode();
-                            for byte in buf.iter() {
-                                block!(context.resources.uart4.write(*byte)).unwrap()
                             }
                         }
+                    };
+
+                    let buf = response.encode_cobs();
+                    for byte in buf.iter() {
+                        block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
             }
