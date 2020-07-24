@@ -276,6 +276,23 @@ const APP: () = {
                                 data: heapless::Vec::new(),
                             }
                         }
+                        protocol::RequestKind::HaltMotors => {
+                            context.resources.motors.set_all_speed(0.0);
+                            protocol::Response {
+                                status: protocol::Status::OK,
+                                state: request.state,
+                                data: heapless::Vec::new(),
+                            }
+                        }
+                        protocol::RequestKind::SetSplitSpeed { left, right } => {
+                            context.resources.motors.set_left_speed(left);
+                            context.resources.motors.set_right_speed(right);
+                            protocol::Response {
+                                status: protocol::Status::OK,
+                                state: request.state,
+                                data: heapless::Vec::new(),
+                            }
+                        }
 
                         _ => {
                             Response {
@@ -291,14 +308,12 @@ const APP: () = {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                     hprintln!("wrote {} bytes in response.", buf.len()).unwrap();
-
                 }
             }
 
             context.resources.rx_buffer.truncate(0);
             // done with buffer, clear it out
             context.resources.rx_buffer.clear();
-
         }
     }
 };

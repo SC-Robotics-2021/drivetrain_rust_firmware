@@ -34,6 +34,8 @@ pub enum RequestKind {
     // Sets the right side of the drive motors to the target speed.
     // Target must be within [-1.0, 1.0]
     SetRightSpeed { target: f32 },
+    // Sets the two different drivetrain sides in the same message.
+    SetSplitSpeed{ left:f32, right:f32},
     // Stop all drive actuators
     HaltMotors,
     // Halt all arm actuators
