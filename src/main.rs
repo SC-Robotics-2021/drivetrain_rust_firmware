@@ -136,7 +136,7 @@ const APP: () = {
         );
 
 
-        let usart2_channels = (
+        let uart4_channels = (
             gpioc.pc10.into_alternate_af8(), // UART4_TX
             gpioc.pc11.into_alternate_af8(), // UART4_RX
         );
@@ -144,9 +144,9 @@ const APP: () = {
         // establish USART2 device
         let mut uart4 = serial::Serial::uart4(
             context.device.UART4,
-            usart2_channels,
+            uart4_channels,
             serial::config::Config {
-                baudrate: 96000.bps(),
+                baudrate: 9600.bps(),
                 wordlength: serial::config::WordLength::DataBits8,
                 parity: serial::config::Parity::ParityNone,
                 stopbits: serial::config::StopBits::STOP1,
@@ -155,7 +155,6 @@ const APP: () = {
         ).unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
-
         // Hello world!
         for byte in b"hello from STM32!".iter() {
             block!( uart4.write(*byte)).unwrap();
@@ -239,7 +238,8 @@ const APP: () = {
     #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]
     fn uart4_on_rxne(context: uart4_on_rxne::Context) {
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
-        let rx_byte = context.resources.uart4.read().unwrap();
+        let rx_byte_result = context.resources.uart4.read();
+        let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
             let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
