@@ -242,7 +242,6 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            hprintln!("full packet recv'ed").unwrap();
             let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             match request {
                 Err(_) => {
@@ -255,7 +254,6 @@ const APP: () = {
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
-                    hprintln!("wrote {} bytes in response.", buf.len()).unwrap();
                 }
                 Ok(request) => {
                     let response = match request.kind {
@@ -307,7 +305,6 @@ const APP: () = {
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
-                    hprintln!("wrote {} bytes in response.", buf.len()).unwrap();
                 }
             }
 
