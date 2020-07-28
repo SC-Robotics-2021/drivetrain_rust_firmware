@@ -73,7 +73,7 @@ pub struct Request {
 pub struct Response {
     pub(crate) status: Status,
     pub(crate) state: i32,
-    pub(crate) data: Vec<u8, U32>,
+    pub(crate) data: Option<Vec<u8, U32>>,
 }
 
 // struct holding the current* value of the encoders

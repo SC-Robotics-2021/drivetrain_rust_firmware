@@ -248,7 +248,7 @@ const APP: () = {
                     let response = protocol::Response {
                         status: protocol::Status::DecodeError,
                         state: -1,
-                        data: heapless::Vec::new(),
+                        data: None,
                     };
                     let buf = response.encode_cobs();
                     for byte in buf.iter() {
@@ -262,7 +262,7 @@ const APP: () = {
                             protocol::Response {
                                 status: protocol::Status::OK,
                                 state: request.state,
-                                data: counts,
+                                data: Some(counts),
                             }
                         }
                         protocol::RequestKind::SetSpeed { target } => {
@@ -271,7 +271,7 @@ const APP: () = {
                             protocol::Response {
                                 status: protocol::Status::OK,
                                 state: request.state,
-                                data: heapless::Vec::new(),
+                                data: None,
                             }
                         }
                         protocol::RequestKind::HaltMotors => {
@@ -279,7 +279,7 @@ const APP: () = {
                             protocol::Response {
                                 status: protocol::Status::OK,
                                 state: request.state,
-                                data: heapless::Vec::new(),
+                                data: None,
                             }
                         }
                         protocol::RequestKind::SetSplitSpeed { left, right } => {
@@ -288,7 +288,7 @@ const APP: () = {
                             protocol::Response {
                                 status: protocol::Status::OK,
                                 state: request.state,
-                                data: heapless::Vec::new(),
+                                data: None,
                             }
                         }
 
@@ -296,7 +296,7 @@ const APP: () = {
                             Response {
                                 status: protocol::Status::Unimplemented,
                                 state: request.state,
-                                data: Vec::new(),
+                                data: None,
                             }
                         }
                     };
