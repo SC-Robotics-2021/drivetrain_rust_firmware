@@ -7,21 +7,6 @@ use serde::{Deserialize, Serialize};
 
 type BufferType = Vec<u8, U32>;
 
-// pub trait AsCobs {}
-//
-// impl dyn AsCobs
-//     where Self: Serialize {
-//     /// Encodes the object to a `heapless::Vec` that is COBS encoded.
-//     fn encode_cobs(&self) -> BufferType {
-//         // serialize to a 32 item `HVec` storage flavor
-//         // using Cobs as the encoding flavor
-//         // outputs a heapless:Vec
-//         serialize_with_flavor::<Self, flavors::Cobs<flavors::HVec<heapless::consts::U32>>, BufferType>(
-//             self, flavors::Cobs::try_new(flavors::HVec::default()).unwrap(),
-//         ).unwrap()
-//     }
-// }
-
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 // Request kind
@@ -35,7 +20,7 @@ pub enum RequestKind {
     // Target must be within [-1.0, 1.0]
     SetRightSpeed { target: f32 },
     // Sets the two different drivetrain sides in the same message.
-    SetSplitSpeed{ left:f32, right:f32},
+    SetSplitSpeed { left: f32, right: f32 },
     // Stop all drive actuators
     HaltMotors,
     // Halt all arm actuators
@@ -88,24 +73,14 @@ pub struct MotorCounts {
     pub south_west: u16,
 }
 
-// impl AsCobs for MotorCounts {}
-//
-// impl AsCobs for Response {}
-
-
-impl MotorCounts {
-    pub fn encode_cobs(&self) -> BufferType {
-// serialize to a 32 item `HVec` storage flavor
-// using Cobs as the encoding flavor
-// outputs a heapless:Vec
-        serialize_with_flavor::<Self, flavors::Cobs<flavors::HVec<heapless::consts::U32>>, BufferType>(
-            self, flavors::Cobs::try_new(flavors::HVec::default()).unwrap(),
-        ).unwrap()
-    }
+pub trait AsCobs {
+    /// Encodes the object to a `heapless::Vec` that is COBS encoded.
+    fn encode_cobs(&self) -> BufferType;
 }
 
-impl Response {
-    pub fn encode_cobs(&self) -> BufferType {
+
+impl<T: Serialize> AsCobs for T {
+    fn encode_cobs(&self) -> BufferType {
 // serialize to a 32 item `HVec` storage flavor
 // using Cobs as the encoding flavor
 // outputs a heapless:Vec

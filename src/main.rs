@@ -17,7 +17,7 @@ use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
-use crate::protocol::{Request, RequestKind, Response};
+use crate::protocol::{Request, RequestKind, Response, AsCobs};
 
 mod protocol;
 // use protocol::AsCobs;
