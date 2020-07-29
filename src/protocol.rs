@@ -84,8 +84,6 @@ impl<T: Serialize> AsCobs for T {
 // serialize to a 32 item `HVec` storage flavor
 // using Cobs as the encoding flavor
 // outputs a heapless:Vec
-        serialize_with_flavor::<Self, flavors::Cobs<flavors::HVec<heapless::consts::U32>>, BufferType>(
-            self, flavors::Cobs::try_new(flavors::HVec::default()).unwrap(),
-        ).unwrap()
+        postcard::to_vec_cobs(self).unwrap()
     }
 }

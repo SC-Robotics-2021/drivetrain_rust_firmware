@@ -17,7 +17,7 @@ use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
-use crate::protocol::{Request, RequestKind, Response, AsCobs};
+use crate::protocol::{AsCobs, Request, RequestKind, Response};
 
 mod protocol;
 // use protocol::AsCobs;
@@ -258,11 +258,10 @@ const APP: () = {
                 Ok(request) => {
                     let response = match request.kind {
                         protocol::RequestKind::GetMotorEncoderCounts => {
-                            let counts = context.resources.motor_counts.encode_cobs();
                             protocol::Response {
                                 status: protocol::Status::OK,
                                 state: request.state,
-                                data: Some(counts),
+                                data: Some(postcard::to_vec(context.resources.motor_counts).unwrap()),
                             }
                         }
                         protocol::RequestKind::SetSpeed { target } => {
