@@ -17,7 +17,7 @@ use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
 use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
 
-use crate::protocol::{AsCobs, Request, RequestKind, Response};
+use crate::protocol::{Request, RequestKind, Response};
 
 mod protocol;
 // use protocol::AsCobs;
@@ -245,18 +245,18 @@ const APP: () = {
             let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             match request {
                 Err(_) => {
-                    let response = protocol::Response {
+                    let mut response = protocol::Response {
                         status: protocol::Status::DecodeError,
                         state: -1,
                         data: None,
                     };
-                    let buf = response.encode_cobs();
+                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&mut response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
                 Ok(request) => {
-                    let response = match request.kind {
+                    let mut response = match request.kind {
                         protocol::RequestKind::GetMotorEncoderCounts => {
                             protocol::Response {
                                 status: protocol::Status::OK,
@@ -300,7 +300,7 @@ const APP: () = {
                         }
                     };
 
-                    let buf = response.encode_cobs();
+                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&mut response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }

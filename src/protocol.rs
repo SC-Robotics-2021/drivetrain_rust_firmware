@@ -5,9 +5,6 @@ use postcard::flavors;
 use postcard::serialize_with_flavor;
 use serde::{Deserialize, Serialize};
 
-type BufferType = Vec<u8, U32>;
-
-
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 // Request kind
 pub enum RequestKind {
@@ -53,12 +50,12 @@ pub struct Request {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-// MCU action response, can include up to 32 bytes of data and will include request-provided state
+// MCU action response, can include up to 256 bytes of data and will include request-provided state
 // if the object successfully decoded; -1 otherwise.
 pub struct Response {
     pub(crate) status: Status,
     pub(crate) state: i32,
-    pub(crate) data: Option<Vec<u8, U32>>,
+    pub(crate) data: Option<Vec<u8, U256>>,
 }
 
 // struct holding the current* value of the encoders
@@ -71,19 +68,4 @@ pub struct MotorCounts {
     // different timer, which only has 16 bit resolution
     pub south_east: u16,
     pub south_west: u16,
-}
-
-pub trait AsCobs {
-    /// Encodes the object to a `heapless::Vec` that is COBS encoded.
-    fn encode_cobs(&self) -> BufferType;
-}
-
-
-impl<T: Serialize> AsCobs for T {
-    fn encode_cobs(&self) -> BufferType {
-// serialize to a 32 item `HVec` storage flavor
-// using Cobs as the encoding flavor
-// outputs a heapless:Vec
-        postcard::to_vec_cobs(self).unwrap()
-    }
 }
