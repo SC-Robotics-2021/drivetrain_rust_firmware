@@ -206,7 +206,12 @@ const APP: () = {
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
-        let motor_counts = protocol::MotorCounts { north_west: 0, north_east: 0, south_east: 0, south_west: 0 };
+        let motor_counts = protocol::MotorCounts {
+            north_west: protocol::MotorDelta { count: 0, delta: 0 },
+            north_east: protocol::MotorDelta { count: 0, delta: 0 },
+            south_east: protocol::MotorDelta { count: 0, delta: 0 },
+            south_west: protocol::MotorDelta { count: 0, delta: 0 },
+        };
 
         init::LateResources {
             motors,
@@ -229,10 +234,14 @@ const APP: () = {
         // prevent concurrent access while these variables are getting updated.
         counts_ptr.lock(|counts_ptr| {
             // critical section
-            counts_ptr.north_east = ne_current;
-            counts_ptr.south_east = se_current;
-            counts_ptr.north_west = nw_current;
-            counts_ptr.south_west = sw_current;
+            counts_ptr.north_east.delta = counts_ptr.north_east.count as i64 - ne_current as i64;
+            counts_ptr.south_east.delta = counts_ptr.south_east.count as i64 - se_current as i64;
+            counts_ptr.north_west.delta = counts_ptr.north_west.count as i64 - nw_current as i64;
+            counts_ptr.south_west.delta = counts_ptr.south_west.count as i64 - sw_current as i64;
+            counts_ptr.north_east.count = ne_current;
+            counts_ptr.south_east.count = se_current.into();
+            counts_ptr.north_west.count = nw_current;
+            counts_ptr.south_west.count = sw_current.into();
         });
     }
     #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]

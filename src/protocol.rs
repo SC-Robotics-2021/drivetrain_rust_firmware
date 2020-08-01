@@ -1,5 +1,5 @@
 use heapless;
-use heapless::consts::U32;
+use heapless::consts::{U32, U256};
 use heapless::Vec;
 use postcard::flavors;
 use postcard::serialize_with_flavor;
@@ -63,9 +63,15 @@ pub struct Response {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct MotorCounts {
     // these two have 32 bit resolution due to their timer
-    pub north_west: u32,
-    pub north_east: u32,
+    pub north_west: MotorDelta,
+    pub north_east: MotorDelta,
     // different timer, which only has 16 bit resolution
-    pub south_east: u16,
-    pub south_west: u16,
+    pub south_east: MotorDelta,
+    pub south_west: MotorDelta,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+pub struct MotorDelta {
+    pub count: u32,
+    pub delta: i64,
 }
