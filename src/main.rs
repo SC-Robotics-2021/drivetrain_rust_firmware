@@ -8,9 +8,10 @@ use core::ops::DerefMut;
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
-use panic_rtt as _;
+use panic_rtt_target as _;
 use postcard::{Error, flavors, from_bytes_cobs, serialize_with_flavor};
 use rtic::app;
+use rtt_target::{rprintln, rtt_init_print};
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
@@ -93,6 +94,8 @@ const APP: () = {
 
     #[init]
     fn init(context: init::Context) -> init::LateResources {
+        rtt_init_print!();
+        rprintln!("hello, world!");
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick

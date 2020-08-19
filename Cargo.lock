@@ -184,25 +184,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "jlink_rtt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f6af40154f64bd7095b5245d6933fef99b0a28c432b38a676cfafaa0aedfc2"
-
-[[package]]
 name = "nb"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1411551beb3c11dedfb0a90a0fa256b47d28b9ec2cdff34c25a2fa59e45dbdc"
 
 [[package]]
-name = "panic_rtt"
-version = "0.3.0"
+name = "panic-rtt-target"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8db43abba508fc93d9f8e28619d3ff2fb1f480c67112bc0f86d862ba231eb82"
+checksum = "ab3dec5d8d834d63b28db55b9f0d4fd3781599527217c865cd79349c71c8deb4"
 dependencies = [
  "cortex-m",
- "jlink_rtt",
+ "rtt-target 0.1.1",
 ]
 
 [[package]]
@@ -270,16 +264,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtt-target"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26ebda2070a2dd2f5d1bba0c427055f475bb011ca8215add472b6e6ba6b7265c"
+dependencies = [
+ "ufmt-write",
+ "vcell",
+]
+
+[[package]]
+name = "rtt-target"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58b1f36984bbcf227044b3b7af1de14a6ebe51b9d21cd856a3d5ba41c70ec191"
+dependencies = [
+ "cortex-m",
+ "ufmt-write",
+ "vcell",
+]
+
+[[package]]
 name = "rust_stm32_motor"
 version = "0.1.0"
 dependencies = [
  "cobs",
+ "cortex-m",
  "cortex-m-rtic",
  "embedded-hal",
  "heapless",
  "nb",
- "panic_rtt",
+ "panic-rtt-target",
  "postcard",
+ "rtt-target 0.2.0",
  "serde",
  "stm32f4",
  "stm32f4xx-hal",
@@ -380,6 +397,12 @@ name = "typenum"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
+
+[[package]]
+name = "ufmt-write"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e87a2ed6b42ec5e28cc3b94c09982969e9227600b2e3dcbc1db927a84c06bd69"
 
 [[package]]
 name = "unicode-xid"
