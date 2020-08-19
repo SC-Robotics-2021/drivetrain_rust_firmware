@@ -8,9 +8,9 @@ use core::ops::DerefMut;
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
-use panic_semihosting as _;
+use panic_rtt as _;
 use postcard::{Error, flavors, from_bytes_cobs, serialize_with_flavor};
-use rtfm::app;
+use rtic::app;
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
 use stm32f4xx_hal::delay::Delay;
