@@ -5,7 +5,6 @@
 
 use core::ops::DerefMut;
 
-use cortex_m_semihosting::hprintln;
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
@@ -94,7 +93,6 @@ const APP: () = {
 
     #[init]
     fn init(context: init::Context) -> init::LateResources {
-        hprintln!("hello world!").unwrap();
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick
