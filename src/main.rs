@@ -213,6 +213,7 @@ const APP: () = {
             south_east: protocol::MotorDelta { count: 0, delta: 0 },
             south_west: protocol::MotorDelta { count: 0, delta: 0 },
         };
+        rprintln!("done initializing!");
 
         init::LateResources {
             motors,
@@ -233,6 +234,7 @@ const APP: () = {
         let sw_current = context.resources.encoders.south_west.count();
         let mut counts_ptr = context.resources.motor_counts;
         // prevent concurrent access while these variables are getting updated.
+        rprintln!("updating counts...");
         counts_ptr.lock(|counts_ptr| {
             // critical section
             counts_ptr.north_east.delta = counts_ptr.north_east.count as i64 - ne_current as i64;
@@ -253,20 +255,21 @@ const APP: () = {
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
             let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
+            rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
-                    let mut response = protocol::Response {
+                    let response = protocol::Response {
                         status: protocol::Status::DecodeError,
                         state: -1,
                         data: None,
                     };
-                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&mut response).unwrap();
+                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
                 Ok(request) => {
-                    let mut response = match request.kind {
+                    let response = match request.kind {
                         protocol::RequestKind::GetMotorEncoderCounts => {
                             protocol::Response {
                                 status: protocol::Status::OK,
@@ -310,7 +313,8 @@ const APP: () = {
                         }
                     };
 
-                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&mut response).unwrap();
+                    rprintln!("writing response: {:?}", response);
+                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
