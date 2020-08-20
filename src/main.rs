@@ -258,18 +258,18 @@ const APP: () = {
             rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
-                    let mut response = protocol::Response {
+                    let response = protocol::Response {
                         status: protocol::Status::DecodeError,
                         state: -1,
                         data: None,
                     };
-                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&mut response).unwrap();
+                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
                 Ok(request) => {
-                    let mut response = match request.kind {
+                    let response = match request.kind {
                         protocol::RequestKind::GetMotorEncoderCounts => {
                             protocol::Response {
                                 status: protocol::Status::OK,
@@ -313,7 +313,8 @@ const APP: () = {
                         }
                     };
 
-                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&mut response).unwrap();
+                    rprintln!("writing response: {:?}", response);
+                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
