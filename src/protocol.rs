@@ -1,8 +1,9 @@
-use heapless;
-use heapless::consts::{U32, U256};
-use heapless::Vec;
-use postcard::flavors;
-use postcard::serialize_with_flavor;
+use heapless::{
+    self,
+    consts::{U256, U32},
+    Vec,
+};
+use postcard::{flavors, serialize_with_flavor};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]

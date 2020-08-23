@@ -9,13 +9,17 @@ use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
 use panic_rtt_target as _;
-use postcard::{Error, flavors, from_bytes_cobs, serialize_with_flavor};
+use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
-use stm32f4xx_hal::{gpio, prelude::*, pwm, qei, serial, timer};
-use stm32f4xx_hal::delay::Delay;
-use stm32f4xx_hal::gpio::{AF1, AF2, Alternate};
+use stm32f4xx_hal::{
+    delay::Delay,
+    gpio,
+    gpio::{Alternate, AF1, AF2},
+    prelude::*,
+    pwm, qei, serial, timer,
+};
 
 use crate::protocol::{Request, RequestKind, Response};
 
@@ -39,7 +43,6 @@ type EncoderSWPinB = gpio::gpiob::PB7<Alternate<AF2>>;
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
-
 
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
@@ -89,7 +92,7 @@ const APP: () = {
         encoders: MotorEncoders,
         motor_counts: protocol::MotorCounts,
         uart4: Uart4,
-        rx_buffer: Vec::<u8, consts::U1024>,
+        rx_buffer: Vec<u8, consts::U1024>,
     }
 
     #[init]
@@ -107,8 +110,8 @@ const APP: () = {
 
         // TIM1/2 uses AF1 for pwm channels.
         let tim1_pwm_channels = (
-            gpioa.pa8.into_alternate_af1(), // ch1 NW
-            gpioa.pa9.into_alternate_af1(), // ch2 NE
+            gpioa.pa8.into_alternate_af1(),  // ch1 NW
+            gpioa.pa9.into_alternate_af1(),  // ch2 NE
             gpioa.pa10.into_alternate_af1(), // ch3 SE
             gpioa.pa11.into_alternate_af1(), // ch4 SW
         );
@@ -123,19 +126,18 @@ const APP: () = {
         // NW: TIM5
         let encoder_nw_channels: (EncoderNWPinA, EncoderNWPinB) = (
             gpioa.pa0.into_alternate_af2(),
-            gpioa.pa1.into_alternate_af2()
+            gpioa.pa1.into_alternate_af2(),
         );
         // TIM3
         let encoder_se_channels: (EncoderSEPinA, EncoderSEPinB) = (
             gpioa.pa6.into_alternate_af2(),
-            gpioa.pa7.into_alternate_af2()
+            gpioa.pa7.into_alternate_af2(),
         );
         // TIM4
         let encoder_sw_channels: (EncoderSWPinA, EncoderSWPinB) = (
             gpiob.pb6.into_alternate_af2(),
             gpiob.pb7.into_alternate_af2(),
         );
-
 
         let uart4_channels = (
             gpioc.pc10.into_alternate_af8(), // UART4_TX
@@ -153,14 +155,14 @@ const APP: () = {
                 stopbits: serial::config::StopBits::STOP1,
             },
             clocks,
-        ).unwrap();
+        )
+        .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
         for byte in b"hello from STM32!".iter() {
-            block!( uart4.write(*byte)).unwrap();
+            block!(uart4.write(*byte)).unwrap();
         }
-
 
         // configure TIM1 for PWM output
         let pwm2 = pwm::tim1(context.device.TIM1, tim1_pwm_channels, clocks, 501.hz());
@@ -254,7 +256,8 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            let request: postcard::Result<protocol::Request> = from_bytes_cobs(context.resources.rx_buffer.deref_mut());
+            let request: postcard::Result<protocol::Request> =
+                from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
@@ -263,20 +266,19 @@ const APP: () = {
                         state: -1,
                         data: None,
                     };
-                    let buf: heapless::Vec<u8, heapless::consts::U32> = postcard::to_vec_cobs(&response).unwrap();
+                    let buf: heapless::Vec<u8, heapless::consts::U32> =
+                        postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
                 Ok(request) => {
                     let response = match request.kind {
-                        protocol::RequestKind::GetMotorEncoderCounts => {
-                            protocol::Response {
-                                status: protocol::Status::OK,
-                                state: request.state,
-                                data: Some(postcard::to_vec(context.resources.motor_counts).unwrap()),
-                            }
-                        }
+                        protocol::RequestKind::GetMotorEncoderCounts => protocol::Response {
+                            status: protocol::Status::OK,
+                            state: request.state,
+                            data: Some(postcard::to_vec(context.resources.motor_counts).unwrap()),
+                        },
                         protocol::RequestKind::SetSpeed { target } => {
                             context.resources.motors.set_all_speed(target);
 
@@ -304,17 +306,16 @@ const APP: () = {
                             }
                         }
 
-                        _ => {
-                            Response {
-                                status: protocol::Status::Unimplemented,
-                                state: request.state,
-                                data: None,
-                            }
-                        }
+                        _ => Response {
+                            status: protocol::Status::Unimplemented,
+                            state: request.state,
+                            data: None,
+                        },
                     };
 
                     rprintln!("writing response: {:?}", response);
-                    let buf: heapless::Vec<u8, heapless::consts::U1024> = postcard::to_vec_cobs(&response).unwrap();
+                    let buf: heapless::Vec<u8, heapless::consts::U1024> =
+                        postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
@@ -328,7 +329,6 @@ const APP: () = {
     }
 };
 
-
 /// Convert `value` from [-1,1] to [new_min, new_max]
 fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
     let new_max = new_max as f32;
@@ -336,7 +336,7 @@ fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
     let value = value as f32;
     let old_min: f32 = -1.0;
     let old_max: f32 = 1.0;
-    let old_range = old_max - old_min;  // 1- -1
+    let old_range = old_max - old_min; // 1- -1
     let new_range = new_max - new_min;
     let new_value = (((value - old_min) * new_range) / old_range) + new_min;
     new_value as u16
