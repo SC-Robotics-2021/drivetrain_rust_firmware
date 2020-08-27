@@ -3,3 +3,5 @@ chip = "STM32F446RETx"
 
 [default.rtt]
 enabled = true
+log_enabled = true
+log_path = "./logs"

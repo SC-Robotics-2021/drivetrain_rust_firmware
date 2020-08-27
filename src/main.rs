@@ -3,15 +3,14 @@
 #![no_std]
 #![allow(unused_imports)]
 
+use rust_stm32_motor as _; // panic and logging magic
 use core::ops::DerefMut;
 
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
-use panic_rtt_target as _;
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
-use rtt_target::{rprintln, rtt_init_print};
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{
     delay::Delay,
@@ -20,7 +19,7 @@ use stm32f4xx_hal::{
     prelude::*,
     pwm, qei, serial, timer,
 };
-
+use defmt::{info, debug, trace, error, warn};
 use crate::protocol::{Request, RequestKind, Response};
 
 mod protocol;
@@ -97,8 +96,8 @@ const APP: () = {
 
     #[init]
     fn init(context: init::Context) -> init::LateResources {
-        rtt_init_print!();
-        rprintln!("hello, world!");
+        warn!("hello, world!");
+        warn!("hello, world!");
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick
@@ -215,7 +214,7 @@ const APP: () = {
             south_east: protocol::MotorDelta { count: 0, delta: 0 },
             south_west: protocol::MotorDelta { count: 0, delta: 0 },
         };
-        rprintln!("done initializing!");
+        trace!("done initializing!");
 
         init::LateResources {
             motors,
@@ -236,13 +235,13 @@ const APP: () = {
         let sw_current = context.resources.encoders.south_west.count();
         let mut counts_ptr = context.resources.motor_counts;
         // prevent concurrent access while these variables are getting updated.
-        rprintln!("updating counts...");
+        trace!("updating counts...");
         counts_ptr.lock(|counts_ptr| {
             // critical section
-            counts_ptr.north_east.delta = counts_ptr.north_east.count as i64 - ne_current as i64;
-            counts_ptr.south_east.delta = counts_ptr.south_east.count as i64 - se_current as i64;
-            counts_ptr.north_west.delta = counts_ptr.north_west.count as i64 - nw_current as i64;
-            counts_ptr.south_west.delta = counts_ptr.south_west.count as i64 - sw_current as i64;
+            counts_ptr.north_east.delta = counts_ptr.north_east.count as i32 - ne_current as i32;
+            counts_ptr.south_east.delta = counts_ptr.south_east.count as i32 - se_current as i32;
+            counts_ptr.north_west.delta = counts_ptr.north_west.count as i32 - nw_current as i32;
+            counts_ptr.south_west.delta = counts_ptr.south_west.count as i32 - sw_current as i32;
             counts_ptr.north_east.count = ne_current;
             counts_ptr.south_east.count = se_current.into();
             counts_ptr.north_west.count = nw_current;
@@ -258,7 +257,6 @@ const APP: () = {
         if rx_byte == 0x00 {
             let request: postcard::Result<protocol::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
-            rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
                     let response = protocol::Response {
@@ -273,6 +271,7 @@ const APP: () = {
                     }
                 }
                 Ok(request) => {
+                    debug!("recv'ed request {:?}", request);
                     let response = match request.kind {
                         protocol::RequestKind::GetMotorEncoderCounts => protocol::Response {
                             status: protocol::Status::OK,
@@ -313,7 +312,7 @@ const APP: () = {
                         },
                     };
 
-                    rprintln!("writing response: {:?}", response);
+                    debug!("writing response: {:?}", response);
                     let buf: heapless::Vec<u8, heapless::consts::U1024> =
                         postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {

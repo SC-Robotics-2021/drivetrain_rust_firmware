@@ -5,8 +5,9 @@ use heapless::{
 };
 use postcard::{flavors, serialize_with_flavor};
 use serde::{Deserialize, Serialize};
+use defmt::Format;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
 // Request kind
 pub enum RequestKind {
     // Sets all Drive motors to target speed. Target must be within [-1.0, 1.0]
@@ -31,7 +32,7 @@ pub enum RequestKind {
     GetMotorEncoderCounts,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Format)]
 pub enum Status {
     // MCU is OK with this query and completed it successfully
     OK,
@@ -43,14 +44,14 @@ pub enum Status {
     Unimplemented,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
 // MCU action request, user-provided state is returned in the Response object (requires decode)
 pub struct Request {
     pub(crate) kind: RequestKind,
     pub(crate) state: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Format)]
 // MCU action response, can include up to 256 bytes of data and will include request-provided state
 // if the object successfully decoded; -1 otherwise.
 pub struct Response {
@@ -61,7 +62,7 @@ pub struct Response {
 
 // struct holding the current* value of the encoders
 // * up to 1 second in lag as this occurs on a 1hz update timer
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Format)]
 pub struct MotorCounts {
     // these two have 32 bit resolution due to their timer
     pub north_west: MotorDelta,
@@ -71,8 +72,8 @@ pub struct MotorCounts {
     pub south_west: MotorDelta,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Format)]
 pub struct MotorDelta {
     pub count: u32,
-    pub delta: i64,
+    pub delta: i32,
 }

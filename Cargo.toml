@@ -13,7 +13,6 @@ nb = "0.1.2"
 cortex-m = "0.6.2"
 cortex-m-rtic = "0.5.1"
 stm32f4 = "0.11.0"
-heapless = "0.5.5"
 cobs = { version = "0.1.4", default-features = false }
 postcard = "0.5.0"
 serde = { version = "1.0.114", default-features = false }
@@ -22,10 +21,70 @@ serde = { version = "1.0.114", default-features = false }
 version = "0.8"
 features = ["rt", "stm32f446"] # replace the model of your microcontroller here
 
-[dependencies.rtt-target]
-version = "0.2.0"
-features = ["cortex-m"]
+[dependencies.heapless]
+version = "0.5.5"
+features = ["defmt-impl"]
 
-[dependencies.panic-rtt-target]
-version = "0.1.0"
-features = ["cortex-m"]
+
+
+[patch.crates-io.heapless]
+git = "https://github.com/theunkn0wn1/heapless"
+branch = "feature/defmt"
+features = ["defmt-impl"]
+
+
+[dependencies.defmt]
+git = "https://github.com/knurling-rs/defmt"
+branch = "main"
+
+[dependencies.defmt-rtt]
+git = "https://github.com/knurling-rs/defmt"
+branch = "main"
+
+[features]
+# set logging levels here
+default = [
+    "defmt-default",
+    # "dependency-a/defmt-trace",
+]
+
+# do NOT modify these features
+defmt-default = []
+defmt-trace = []
+defmt-debug = []
+defmt-info = []
+defmt-warn = []
+defmt-error = []
+
+[profile.dev]
+codegen-units = 1
+debug = 1
+debug-assertions = true # <-
+incremental = false
+lto = 'fat'
+opt-level = 'z' # <-
+overflow-checks = true # <-
+
+[profile.release]
+codegen-units = 1
+debug = 1
+debug-assertions = false # <-
+incremental = false
+lto = 'fat'
+opt-level = 3 # <-
+overflow-checks = false # <-
+
+# do not optimize proc-macro crates = faster builds from scratch
+[profile.dev.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
+
+[profile.release.build-override]
+codegen-units = 8
+debug = false
+debug-assertions = false
+opt-level = 0
+overflow-checks = false
