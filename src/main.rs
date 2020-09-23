@@ -235,7 +235,6 @@ const APP: () = {
         let sw_current = context.resources.encoders.south_west.count();
         let mut counts_ptr = context.resources.motor_counts;
         // prevent concurrent access while these variables are getting updated.
-        trace!("updating counts...");
         counts_ptr.lock(|counts_ptr| {
             // critical section
             counts_ptr.north_east.delta = counts_ptr.north_east.count as i32 - ne_current as i32;
@@ -255,6 +254,7 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
+            info!("{:[u8]}", context.resources.rx_buffer);
             let request: postcard::Result<protocol::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             match request {
@@ -311,8 +311,8 @@ const APP: () = {
                             data: None,
                         },
                     };
-
-                    debug!("writing response: {:?}", response);
+                    trace!("done processing request...");
+                    // debug!("writing response: {:?}", response);
                     let buf: heapless::Vec<u8, heapless::consts::U1024> =
                         postcard::to_vec_cobs(&response).unwrap();
                     for byte in buf.iter() {
@@ -320,10 +320,17 @@ const APP: () = {
                     }
                 }
             }
-
+            info!("done processing packet. clearing buffer.");
             context.resources.rx_buffer.truncate(0);
             // done with buffer, clear it out
             context.resources.rx_buffer.clear();
+        }
+    }
+
+    #[idle]  // FIXME: hack around WFI bug
+    fn idle(context: idle::Context) ->!{
+        loop {
+            cortex_m::asm::nop();
         }
     }
 };

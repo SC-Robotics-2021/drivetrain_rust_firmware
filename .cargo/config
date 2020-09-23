@@ -10,4 +10,4 @@ target = "thumbv7em-none-eabihf"
 
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-run --chip STM32F446RETx"
+runner = "probe-run --defmt  --chip STM32F446RETx "
