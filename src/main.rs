@@ -97,7 +97,6 @@ const APP: () = {
     #[init]
     fn init(context: init::Context) -> init::LateResources {
         warn!("hello, world!");
-        warn!("hello, world!");
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick
@@ -254,7 +253,7 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            info!("{:[u8]}", context.resources.rx_buffer);
+            debug!("rx_buffer := {:[u8]}", context.resources.rx_buffer);
             let request: postcard::Result<protocol::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             match request {
@@ -315,12 +314,13 @@ const APP: () = {
                     // debug!("writing response: {:?}", response);
                     let buf: heapless::Vec<u8, heapless::consts::U1024> =
                         postcard::to_vec_cobs(&response).unwrap();
+                    debug!("emitting {:[u8]}", buf);
                     for byte in buf.iter() {
                         block!(context.resources.uart4.write(*byte)).unwrap()
                     }
                 }
             }
-            info!("done processing packet. clearing buffer.");
+            trace!("done processing packet. clearing buffer.");
             context.resources.rx_buffer.truncate(0);
             // done with buffer, clear it out
             context.resources.rx_buffer.clear();
