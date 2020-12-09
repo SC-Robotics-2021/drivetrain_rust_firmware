@@ -99,6 +99,22 @@ const APP: () = {
     fn init(context: init::Context) -> init::LateResources {
         rtt_init_print!();
         rprintln!("hello, world!");
+        /*
+            This patch enables the debugger to behave correctly during a WFI
+            See Errata: https://www.st.com/content/ccc/resource/technical/document/errata_sheet/c3/6b/f8/32/fc/01/48/6e/DM00155929.pdf/files/DM00155929.pdf/jcr:content/translations/en.DM00155929.pdf#%5B%7B%22num%22%3A37%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C67%2C724%2Cnull%5D
+            See Also Github: https://github.com/probe-rs/probe-rs/issues/350#issuecomment-740550519
+        */
+        context
+            .device
+            .RCC
+            .ahb1enr
+            .modify(|_, w| w.dma1en().enabled());
+        context.device.DBGMCU.cr.modify(|_, w| {
+            w.dbg_sleep().set_bit();
+            w.dbg_standby().set_bit();
+            w.dbg_stop().set_bit()
+        });
+
         let rcc = context.device.RCC.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick

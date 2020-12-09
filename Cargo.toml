@@ -1,10 +1,10 @@
-cargo-features = ["resolver"]
+#cargo-features = ["resolver"]
 [package]
 name = "rust_stm32_motor"
 version = "0.1.0"
 authors = ["joshua salzedo <thHunkn0WNd@gmail.com>"]
 edition = "2018"
-resolver = "2"
+#resolver = "2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
