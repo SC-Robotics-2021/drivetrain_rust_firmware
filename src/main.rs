@@ -3,12 +3,15 @@
 #![no_std]
 #![allow(unused_imports)]
 
-use rust_stm32_motor as _; // panic and logging magic
+use rust_stm32_motor as _;
+// panic and logging magic
 use core::ops::DerefMut;
 
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
+use crate::protocol::{Request, RequestKind, Response};
+use defmt::{debug, error, info, trace, warn};
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
@@ -19,8 +22,6 @@ use stm32f4xx_hal::{
     prelude::*,
     pwm, qei, serial, timer,
 };
-use defmt::{info, debug, trace, error, warn};
-use crate::protocol::{Request, RequestKind, Response};
 
 mod protocol;
 // use protocol::AsCobs;
@@ -154,7 +155,7 @@ const APP: () = {
             },
             clocks,
         )
-        .unwrap();
+            .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
@@ -327,8 +328,8 @@ const APP: () = {
         }
     }
 
-    #[idle]  // FIXME: hack around WFI bug
-    fn idle(context: idle::Context) ->!{
+    #[idle] // FIXME: hack around WFI bug
+    fn idle(context: idle::Context) -> ! {
         loop {
             cortex_m::asm::nop();
         }

@@ -1,3 +1,4 @@
+use defmt::Format;
 use heapless::{
     self,
     consts::{U256, U32},
@@ -5,7 +6,6 @@ use heapless::{
 };
 use postcard::{flavors, serialize_with_flavor};
 use serde::{Deserialize, Serialize};
-use defmt::Format;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Format)]
 // Request kind

@@ -124,17 +124,18 @@ dependencies = [
 
 [[package]]
 name = "defmt"
-version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#91b0efc9c05a9d55b3c9278592a86bb378310dbf"
+version = "0.1.3"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c599ba26626aeae98fb97a2cae71b3da333411e1"
 dependencies = [
  "defmt-macros",
+ "heapless",
  "semver 0.11.0",
 ]
 
 [[package]]
 name = "defmt-macros"
-version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#91b0efc9c05a9d55b3c9278592a86bb378310dbf"
+version = "0.1.1"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c599ba26626aeae98fb97a2cae71b3da333411e1"
 dependencies = [
  "defmt-parser",
  "proc-macro2",
@@ -145,12 +146,12 @@ dependencies = [
 [[package]]
 name = "defmt-parser"
 version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#91b0efc9c05a9d55b3c9278592a86bb378310dbf"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c599ba26626aeae98fb97a2cae71b3da333411e1"
 
 [[package]]
 name = "defmt-rtt"
 version = "0.1.0"
-source = "git+https://github.com/knurling-rs/defmt?branch=main#91b0efc9c05a9d55b3c9278592a86bb378310dbf"
+source = "git+https://github.com/knurling-rs/defmt?branch=main#c599ba26626aeae98fb97a2cae71b3da333411e1"
 dependencies = [
  "cortex-m",
  "defmt",
@@ -211,11 +212,11 @@ checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
 
 [[package]]
 name = "heapless"
-version = "0.5.5"
-source = "git+https://github.com/theunkn0wn1/heapless?branch=feature/defmt#883cd436bdb19b1e7e2cd0a156c5ed65f5b54b34"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74911a68a1658cfcfb61bc0ccfbd536e3b6e906f8c2f7883ee50157e3e2184f1"
 dependencies = [
  "as-slice",
- "defmt",
  "generic-array 0.13.2",
  "hash32",
  "serde",
@@ -382,18 +383,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.117"
+version = "1.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88fa983de7720629c9387e9f517353ed404164b1e482c970a90c1a4aaf7dc1a"
+checksum = "06c64263859d87aa2eb554587e2d23183398d617427327cf2b3d0ed8c69e4800"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.117"
+version = "1.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbd1ae72adb44aab48f325a02444a5fc079349a8d804c1fc922aed3f7454c74e"
+checksum = "c84d3526699cd55261af4b941e4e725444df67aa4f9e6a3564f18030d12672df"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -437,9 +438,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.48"
+version = "1.0.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc371affeffc477f42a221a1e4297aedcea33d47d19b61455588bd9d8f6b19ac"
+checksum = "9a2af957a63d6bd42255c359c93d9bfdb97076bd3b820897ce55ffbfbf107f44"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -20,15 +20,15 @@ version = "0.8"
 features = ["rt", "stm32f446"] # replace the model of your microcontroller here
 
 [dependencies.heapless]
-version = "0.5.5"
-features = ["defmt-impl"]
+version = "0.5.6"
+#features = ["defmt-impl"]
 
 
 
-[patch.crates-io.heapless]
-git = "https://github.com/theunkn0wn1/heapless"
-branch = "feature/defmt"
-features = ["defmt-impl"]
+#[patch.crates-io.heapless]
+#git = "https://github.com/theunkn0wn1/heapless"
+#branch = "feature/defmt"
+#features = ["defmt-impl"]
 
 
 [dependencies.defmt]
