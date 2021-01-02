@@ -309,6 +309,7 @@ dependencies = [
  "nb 0.1.3",
  "panic-rtt-target",
  "postcard",
+ "postcard-cobs",
  "rtt-target",
  "serde",
  "stm32f4",
