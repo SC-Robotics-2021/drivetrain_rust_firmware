@@ -21,10 +21,9 @@ use stm32f4xx_hal::{
     pwm, qei, serial, timer,
 };
 
-use crate::protocol::{Request, RequestKind, Response};
+use rover_postcards::{Request, RequestKind, Response, ResponseKind};
 
-mod protocol;
-// use protocol::AsCobs;
+// use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
 // NE: tim2
@@ -90,7 +89,7 @@ const APP: () = {
     struct Resources {
         motors: MotorPwm,
         encoders: MotorEncoders,
-        motor_counts: protocol::MotorCounts,
+        motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
         rx_buffer: Vec<u8, consts::U1024>,
     }
@@ -104,11 +103,13 @@ const APP: () = {
             See Errata: https://www.st.com/content/ccc/resource/technical/document/errata_sheet/c3/6b/f8/32/fc/01/48/6e/DM00155929.pdf/files/DM00155929.pdf/jcr:content/translations/en.DM00155929.pdf#%5B%7B%22num%22%3A37%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C67%2C724%2Cnull%5D
             See Also Github: https://github.com/probe-rs/probe-rs/issues/350#issuecomment-740550519
         */
+        // enable the dma1 master
         context
             .device
             .RCC
             .ahb1enr
             .modify(|_, w| w.dma1en().enabled());
+        // enable the debugger.
         context.device.DBGMCU.cr.modify(|_, w| {
             w.dbg_sleep().set_bit();
             w.dbg_standby().set_bit();
@@ -225,11 +226,11 @@ const APP: () = {
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
-        let motor_counts = protocol::MotorCounts {
-            north_west: protocol::MotorDelta { count: 0, delta: 0 },
-            north_east: protocol::MotorDelta { count: 0, delta: 0 },
-            south_east: protocol::MotorDelta { count: 0, delta: 0 },
-            south_west: protocol::MotorDelta { count: 0, delta: 0 },
+        let motor_counts = rover_postcards::MotorCounts {
+            north_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            north_east: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            south_east: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            south_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
         };
         rprintln!("done initializing!");
 
@@ -272,13 +273,13 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            let request: postcard::Result<protocol::Request> =
+            let request: postcard::Result<rover_postcards::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
-                    let response = protocol::Response {
-                        status: protocol::Status::DecodeError,
+                    let response = rover_postcards::Response {
+                        status: rover_postcards::Status::DecodeError,
                         state: -1,
                         data: None,
                     };
@@ -290,40 +291,40 @@ const APP: () = {
                 }
                 Ok(request) => {
                     let response = match request.kind {
-                        protocol::RequestKind::GetMotorEncoderCounts => protocol::Response {
-                            status: protocol::Status::OK,
+                        rover_postcards::RequestKind::GetMotorEncoderCounts => rover_postcards::Response {
+                            status: rover_postcards::Status::OK,
                             state: request.state,
-                            data: Some(postcard::to_vec(context.resources.motor_counts).unwrap()),
+                            data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
                         },
-                        protocol::RequestKind::SetSpeed { target } => {
+                        rover_postcards::RequestKind::SetSpeed { target } => {
                             context.resources.motors.set_all_speed(target);
 
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
-                        protocol::RequestKind::HaltMotors => {
+                        rover_postcards::RequestKind::HaltMotors => {
                             context.resources.motors.set_all_speed(0.0);
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
-                        protocol::RequestKind::SetSplitSpeed { left, right } => {
+                        rover_postcards::RequestKind::SetSplitSpeed { left, right } => {
                             context.resources.motors.set_left_speed(left);
                             context.resources.motors.set_right_speed(right);
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
 
                         _ => Response {
-                            status: protocol::Status::Unimplemented,
+                            status: rover_postcards::Status::Unimplemented,
                             state: request.state,
                             data: None,
                         },
