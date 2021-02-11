@@ -21,10 +21,9 @@ use stm32f4xx_hal::{
     pwm, qei, serial, timer,
 };
 
-use crate::protocol::{Request, RequestKind, Response, ResponseKind};
+use rover_postcards::{Request, RequestKind, Response, ResponseKind};
 
-mod protocol;
-// use protocol::AsCobs;
+// use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
 // NE: tim2
@@ -90,7 +89,7 @@ const APP: () = {
     struct Resources {
         motors: MotorPwm,
         encoders: MotorEncoders,
-        motor_counts: protocol::MotorCounts,
+        motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
         rx_buffer: Vec<u8, consts::U1024>,
     }
@@ -227,11 +226,11 @@ const APP: () = {
         // allocate 1024 byte RX buffer statically
         let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
 
-        let motor_counts = protocol::MotorCounts {
-            north_west: protocol::MotorDelta { count: 0, delta: 0 },
-            north_east: protocol::MotorDelta { count: 0, delta: 0 },
-            south_east: protocol::MotorDelta { count: 0, delta: 0 },
-            south_west: protocol::MotorDelta { count: 0, delta: 0 },
+        let motor_counts = rover_postcards::MotorCounts {
+            north_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            north_east: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            south_east: rover_postcards::MotorDelta { count: 0, delta: 0 },
+            south_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
         };
         rprintln!("done initializing!");
 
@@ -274,13 +273,13 @@ const APP: () = {
         let rx_byte = rx_byte_result.unwrap();
         context.resources.rx_buffer.push(rx_byte).unwrap();
         if rx_byte == 0x00 {
-            let request: postcard::Result<protocol::Request> =
+            let request: postcard::Result<rover_postcards::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
             rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
-                    let response = protocol::Response {
-                        status: protocol::Status::DecodeError,
+                    let response = rover_postcards::Response {
+                        status: rover_postcards::Status::DecodeError,
                         state: -1,
                         data: None,
                     };
@@ -292,40 +291,40 @@ const APP: () = {
                 }
                 Ok(request) => {
                     let response = match request.kind {
-                        protocol::RequestKind::GetMotorEncoderCounts => protocol::Response {
-                            status: protocol::Status::OK,
+                        rover_postcards::RequestKind::GetMotorEncoderCounts => rover_postcards::Response {
+                            status: rover_postcards::Status::OK,
                             state: request.state,
                             data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
                         },
-                        protocol::RequestKind::SetSpeed { target } => {
+                        rover_postcards::RequestKind::SetSpeed { target } => {
                             context.resources.motors.set_all_speed(target);
 
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
-                        protocol::RequestKind::HaltMotors => {
+                        rover_postcards::RequestKind::HaltMotors => {
                             context.resources.motors.set_all_speed(0.0);
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
-                        protocol::RequestKind::SetSplitSpeed { left, right } => {
+                        rover_postcards::RequestKind::SetSplitSpeed { left, right } => {
                             context.resources.motors.set_left_speed(left);
                             context.resources.motors.set_right_speed(right);
-                            protocol::Response {
-                                status: protocol::Status::OK,
+                            rover_postcards::Response {
+                                status: rover_postcards::Status::OK,
                                 state: request.state,
                                 data: None,
                             }
                         }
 
                         _ => Response {
-                            status: protocol::Status::Unimplemented,
+                            status: rover_postcards::Status::Unimplemented,
                             state: request.state,
                             data: None,
                         },
