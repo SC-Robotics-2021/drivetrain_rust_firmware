@@ -21,7 +21,7 @@ use stm32f4xx_hal::{
     pwm, qei, serial, timer,
 };
 
-use crate::protocol::{Request, RequestKind, Response};
+use crate::protocol::{Request, RequestKind, Response, ResponseKind};
 
 mod protocol;
 // use protocol::AsCobs;
@@ -295,7 +295,7 @@ const APP: () = {
                         protocol::RequestKind::GetMotorEncoderCounts => protocol::Response {
                             status: protocol::Status::OK,
                             state: request.state,
-                            data: Some(postcard::to_vec(context.resources.motor_counts).unwrap()),
+                            data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
                         },
                         protocol::RequestKind::SetSpeed { target } => {
                             context.resources.motors.set_all_speed(target);

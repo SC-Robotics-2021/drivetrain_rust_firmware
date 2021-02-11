@@ -51,17 +51,26 @@ pub struct Request {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+/// The kind of response, this is marked non-exhaustive to allow expansion to the protocol
+pub enum ResponseKind{
+    /// A motor response
+    MotorCountResponse(MotorCounts)
+
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 // MCU action response, can include up to 256 bytes of data and will include request-provided state
 // if the object successfully decoded; -1 otherwise.
 pub struct Response {
     pub(crate) status: Status,
     pub(crate) state: i32,
-    pub(crate) data: Option<Vec<u8, U256>>,
+    pub(crate) data: Option<ResponseKind>,
 }
 
 // struct holding the current* value of the encoders
 // * up to 1 second in lag as this occurs on a 1hz update timer
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Copy, Clone)]
 pub struct MotorCounts {
     // these two have 32 bit resolution due to their timer
     pub north_west: MotorDelta,
@@ -71,7 +80,7 @@ pub struct MotorCounts {
     pub south_west: MotorDelta,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Copy, Clone)]
 pub struct MotorDelta {
     pub count: u32,
     pub delta: i64,
