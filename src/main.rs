@@ -8,10 +8,24 @@ use core::ops::DerefMut;
 use heapless::{consts, Vec};
 use nb::block;
 // Halt on panic
+
+// a panic handler is required, though for non-debug builds RTT won't be available
+// as its a debugger feature.
+// Thus we provide our own for non-debug builds and use RTT for debug builds.
+#[cfg(debug_assertions)]
 use panic_rtt_target as _;
+
+#[cfg(not(debug_assertions))]
+mod panic_handler;
+#[cfg(not(debug_assertions))]
+use panic as _;
+
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
+
+#[cfg(debug_assertions)]
 use rtt_target::{rprintln, rtt_init_print};
+
 use stm32f4::stm32f446::{TIM1, TIM2, TIM3, TIM4, TIM5};
 use stm32f4xx_hal::{
     delay::Delay,
@@ -96,7 +110,10 @@ const APP: () = {
 
     #[init]
     fn init(context: init::Context) -> init::LateResources {
+        #[cfg(debug_assertions)]
         rtt_init_print!();
+
+        #[cfg(debug_assertions)]
         rprintln!("hello, world!");
         /*
             This patch enables the debugger to behave correctly during a WFI
@@ -232,6 +249,7 @@ const APP: () = {
             south_east: rover_postcards::MotorDelta { count: 0, delta: 0 },
             south_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
         };
+        #[cfg(debug_assertions)]
         rprintln!("done initializing!");
 
         init::LateResources {
@@ -253,6 +271,7 @@ const APP: () = {
         let sw_current = context.resources.encoders.south_west.count();
         let mut counts_ptr = context.resources.motor_counts;
         // prevent concurrent access while these variables are getting updated.
+        #[cfg(debug_assertions)]
         rprintln!("updating counts...");
         counts_ptr.lock(|counts_ptr| {
             // critical section
@@ -275,6 +294,7 @@ const APP: () = {
         if rx_byte == 0x00 {
             let request: postcard::Result<rover_postcards::Request> =
                 from_bytes_cobs(context.resources.rx_buffer.deref_mut());
+            #[cfg(debug_assertions)]
             rprintln!("recv'ed request {:?}", request);
             match request {
                 Err(_) => {
@@ -330,6 +350,7 @@ const APP: () = {
                         },
                     };
 
+                    #[cfg(debug_assertions)]
                     rprintln!("writing response: {:?}", response);
                     let buf: heapless::Vec<u8, heapless::consts::U1024> =
                         postcard::to_vec_cobs(&response).unwrap();
