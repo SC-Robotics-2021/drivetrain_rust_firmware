@@ -68,8 +68,8 @@ impl MotorPwm {
     pub fn set_right_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
 
-        self.north_east.set_duty(to_scale(max_duty, min_duty, target*-1.0));
-        self.south_east.set_duty(to_scale(max_duty, min_duty, target));
+        self.north_east.set_duty(to_scale(max_duty, min_duty, target));
+        self.south_east.set_duty(to_scale(max_duty, min_duty, target*-1.0));
     }
     pub fn set_left_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
