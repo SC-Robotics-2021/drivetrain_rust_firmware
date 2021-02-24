@@ -17,6 +17,7 @@ use panic_rtt_target as _;
 
 #[cfg(not(debug_assertions))]
 mod panic_handler;
+
 #[cfg(not(debug_assertions))]
 use panic as _;
 
@@ -36,6 +37,7 @@ use stm32f4xx_hal::{
 };
 
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
+use cobs_stream::{CobsDecoder};
 
 // use rover_postcards::AsCobs;
 
@@ -69,7 +71,7 @@ impl MotorPwm {
         let (max_duty, min_duty) = self.get_bounds();
 
         self.north_east.set_duty(to_scale(max_duty, min_duty, target));
-        self.south_east.set_duty(to_scale(max_duty, min_duty, target*-1.0));
+        self.south_east.set_duty(to_scale(max_duty, min_duty, target * -1.0));
     }
     pub fn set_left_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
@@ -104,7 +106,7 @@ const APP: () = {
         encoders: MotorEncoders,
         motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
-        rx_buffer: Vec<u8, consts::U1024>,
+        rx_buffer: CobsDecoder,
     }
 
     #[init]
@@ -189,7 +191,7 @@ const APP: () = {
             },
             clocks,
         )
-        .unwrap();
+            .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
@@ -239,8 +241,12 @@ const APP: () = {
         motors.south_west.enable();
         motors.south_east.enable();
 
-        // allocate 1024 byte RX buffer statically
-        let rx_buffer = heapless::Vec::<u8, consts::U1024>::new();
+        // allocate RX buffer statically
+        let mut buf = cobs_stream::Buffer::new();
+        // and ensure its actually that size by filling it with sentinels
+        buf.resize(buf.capacity(), 0xFF).expect("this resize should never fail...");
+        // then pass ownership to the decoder.
+        let rx_buffer = CobsDecoder::new(buf);
 
         let motor_counts = rover_postcards::MotorCounts {
             north_west: rover_postcards::MotorDelta { count: 0, delta: 0 },
@@ -270,8 +276,9 @@ const APP: () = {
         let sw_current = context.resources.encoders.south_west.count();
         let mut counts_ptr = context.resources.motor_counts;
         // prevent concurrent access while these variables are getting updated.
-        #[cfg(debug_assertions)]
-        rprintln!("updating counts...");
+        // #[cfg(debug_assertions)]
+        // rprintln!("updating counts...");
+
         counts_ptr.lock(|counts_ptr| {
             // critical section
             counts_ptr.north_east.delta = counts_ptr.north_east.count as i64 - ne_current as i64;
@@ -285,93 +292,112 @@ const APP: () = {
         });
     }
     #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]
-    fn uart4_on_rxne(context: uart4_on_rxne::Context) {
+    fn uart4_on_rxne(mut context: uart4_on_rxne::Context) {
+        let connection: &mut Uart4 = context.resources.uart4;
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
-        match  context.resources.uart4.read(){
-            Err(e) =>{
+        match connection.read() {
+            Err(e) => {
                 #[cfg(debug_assertions)]
                 rprintln!("Failed to read byte {:?}... discarding buffer.", e);
 
                 return;
             }
-            Ok(rx_byte) =>{
-                context.resources.rx_buffer.push(rx_byte).unwrap();
-                if rx_byte == 0x00 {
-                    let request: postcard::Result<rover_postcards::Request> =
-                        from_bytes_cobs(context.resources.rx_buffer.deref_mut());
-                    #[cfg(debug_assertions)]
-                    rprintln!("recv'ed request {:?}", request);
-                    match request {
-                        Err(_) => {
-                            let response = rover_postcards::Response {
-                                status: rover_postcards::Status::DecodeError,
-                                state: -1,
-                                data: None,
-                            };
-                            let buf: heapless::Vec<u8, heapless::consts::U32> =
-                                postcard::to_vec_cobs(&response).unwrap();
-                            for byte in buf.iter() {
-                                block!(context.resources.uart4.write(*byte)).unwrap()
-                            }
+            Ok(rx_byte) => {
+                let decoder: &mut CobsDecoder = &mut context.resources.rx_buffer;
+                #[cfg(debug_assertions)]
+                rprintln!("feeding byte {:?} ", rx_byte);
+                match decoder.feed(rx_byte) {
+                    Ok(None) => { return; }
+                    Err(e) => {
+                        #[cfg(debug_assertions)]
+                        rprintln!("Decoding failure := {:?} !", e);
+                        let response = rover_postcards::Response {
+                            status: rover_postcards::Status::DecodeError,
+                            state: -1,
+                            data: None,
+                        };
+                        let buf: heapless::Vec<u8, heapless::consts::U32> =
+                            postcard::to_vec_cobs(&response).unwrap();
+                        for byte in buf.iter() {
+                            block!(context.resources.uart4.write(*byte)).unwrap()
                         }
-                        Ok(request) => {
-                            let response = match request.kind {
-                                rover_postcards::RequestKind::GetMotorEncoderCounts => rover_postcards::Response {
-                                    status: rover_postcards::Status::OK,
-                                    state: request.state,
-                                    data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
-                                },
-                                rover_postcards::RequestKind::SetSpeed { target } => {
-                                    context.resources.motors.set_all_speed(target);
-
-                                    rover_postcards::Response {
-                                        status: rover_postcards::Status::OK,
-                                        state: request.state,
-                                        data: None,
-                                    }
-                                }
-                                rover_postcards::RequestKind::HaltMotors => {
-                                    context.resources.motors.set_all_speed(0.0);
-                                    rover_postcards::Response {
-                                        status: rover_postcards::Status::OK,
-                                        state: request.state,
-                                        data: None,
-                                    }
-                                }
-                                rover_postcards::RequestKind::SetSplitSpeed { left, right } => {
-                                    context.resources.motors.set_left_speed(left);
-                                    context.resources.motors.set_right_speed(right);
-                                    rover_postcards::Response {
-                                        status: rover_postcards::Status::OK,
-                                        state: request.state,
-                                        data: None,
-                                    }
-                                }
-
-                                _ => Response {
-                                    status: rover_postcards::Status::Unimplemented,
-                                    state: request.state,
-                                    data: None,
-                                },
-                            };
-
-                            #[cfg(debug_assertions)]
-                            rprintln!("writing response: {:?}", response);
-                            let buf: heapless::Vec<u8, heapless::consts::U1024> =
-                                postcard::to_vec_cobs(&response).unwrap();
-                            for byte in buf.iter() {
-                                block!(context.resources.uart4.write(*byte)).unwrap()
-                            }
-                        }
+                        return;
                     }
+                    Ok(Some(_)) => {
+                        let request: postcard::Result<rover_postcards::Request> =
+                            postcard::from_bytes(&mut decoder.dest);
 
-                    context.resources.rx_buffer.truncate(0);
-                    // done with buffer, clear it out
-                    context.resources.rx_buffer.clear();
+                        #[cfg(debug_assertions)]
+                        rprintln!("recv'ed request {:?}", request);
+                        match request {
+                            Err(_) => {
+                                let response = rover_postcards::Response {
+                                    status: rover_postcards::Status::DecodeError,
+                                    state: -1,
+                                    data: None,
+                                };
+                                let buf: heapless::Vec<u8, heapless::consts::U32> =
+                                    postcard::to_vec_cobs(&response).unwrap();
+                                for byte in buf.iter() {
+                                    block!(context.resources.uart4.write(*byte)).unwrap()
+                                }
+                            }
+                            Ok(request) => {
+                                let response = match request.kind {
+                                    rover_postcards::RequestKind::GetMotorEncoderCounts => rover_postcards::Response {
+                                        status: rover_postcards::Status::OK,
+                                        state: request.state,
+                                        data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
+                                    },
+                                    rover_postcards::RequestKind::SetSpeed { target } => {
+                                        context.resources.motors.set_all_speed(target);
+
+                                        rover_postcards::Response {
+                                            status: rover_postcards::Status::OK,
+                                            state: request.state,
+                                            data: None,
+                                        }
+                                    }
+                                    rover_postcards::RequestKind::HaltMotors => {
+                                        context.resources.motors.set_all_speed(0.0);
+                                        rover_postcards::Response {
+                                            status: rover_postcards::Status::OK,
+                                            state: request.state,
+                                            data: None,
+                                        }
+                                    }
+                                    rover_postcards::RequestKind::SetSplitSpeed { left, right } => {
+                                        context.resources.motors.set_left_speed(left);
+                                        context.resources.motors.set_right_speed(right);
+                                        rover_postcards::Response {
+                                            status: rover_postcards::Status::OK,
+                                            state: request.state,
+                                            data: None,
+                                        }
+                                    }
+
+                                    _ => Response {
+                                        status: rover_postcards::Status::Unimplemented,
+                                        state: request.state,
+                                        data: None,
+                                    },
+                                };
+
+                                #[cfg(debug_assertions)]
+                                rprintln!("writing response: {:?}", response);
+                                let buf: heapless::Vec<u8, heapless::consts::U1024> =
+                                    postcard::to_vec_cobs(&response).unwrap();
+                                for byte in buf.iter() {
+                                    block!(context.resources.uart4.write(*byte)).unwrap()
+                                }
+                            }
+                        }
+
+                        decoder.reset().expect("failed to reset stream decoder...");
+                    }
                 }
             }
         }
-
     }
 };
 

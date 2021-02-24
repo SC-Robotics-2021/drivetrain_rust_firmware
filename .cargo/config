@@ -6,3 +6,6 @@ rustflags = [
 
 [build]
 target = "thumbv7em-none-eabihf"
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "cargo embed --chip STM32F446RETx "
