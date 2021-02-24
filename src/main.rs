@@ -36,8 +36,8 @@ use stm32f4xx_hal::{
     pwm, qei, serial, timer,
 };
 
+use cobs_stream::CobsDecoder;
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
-use cobs_stream::{CobsDecoder};
 
 // use rover_postcards::AsCobs;
 
@@ -70,8 +70,10 @@ impl MotorPwm {
     pub fn set_right_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
 
-        self.north_east.set_duty(to_scale(max_duty, min_duty, target));
-        self.south_east.set_duty(to_scale(max_duty, min_duty, target * -1.0));
+        self.north_east
+            .set_duty(to_scale(max_duty, min_duty, target));
+        self.south_east
+            .set_duty(to_scale(max_duty, min_duty, target * -1.0));
     }
     pub fn set_left_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
@@ -191,7 +193,7 @@ const APP: () = {
             },
             clocks,
         )
-            .unwrap();
+        .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
@@ -244,7 +246,8 @@ const APP: () = {
         // allocate RX buffer statically
         let mut buf = cobs_stream::Buffer::new();
         // and ensure its actually that size by filling it with sentinels
-        buf.resize(buf.capacity(), 0xFF).expect("this resize should never fail...");
+        buf.resize(buf.capacity(), 0xFF)
+            .expect("this resize should never fail...");
         // then pass ownership to the decoder.
         let rx_buffer = CobsDecoder::new(buf);
 
@@ -307,7 +310,9 @@ const APP: () = {
                 #[cfg(debug_assertions)]
                 rprintln!("feeding byte {:?} ", rx_byte);
                 match decoder.feed(rx_byte) {
-                    Ok(None) => { return; }
+                    Ok(None) => {
+                        return;
+                    }
                     Err(e) => {
                         #[cfg(debug_assertions)]
                         rprintln!("Decoding failure := {:?} !", e);
@@ -344,11 +349,15 @@ const APP: () = {
                             }
                             Ok(request) => {
                                 let response = match request.kind {
-                                    rover_postcards::RequestKind::GetMotorEncoderCounts => rover_postcards::Response {
-                                        status: rover_postcards::Status::OK,
-                                        state: request.state,
-                                        data: Some(ResponseKind::MotorCountResponse(*context.resources.motor_counts)),
-                                    },
+                                    rover_postcards::RequestKind::GetMotorEncoderCounts => {
+                                        rover_postcards::Response {
+                                            status: rover_postcards::Status::OK,
+                                            state: request.state,
+                                            data: Some(ResponseKind::MotorCountResponse(
+                                                *context.resources.motor_counts,
+                                            )),
+                                        }
+                                    }
                                     rover_postcards::RequestKind::SetSpeed { target } => {
                                         context.resources.motors.set_all_speed(target);
 
