@@ -9,7 +9,7 @@ use core::{
 
 #[inline(never)]
 #[panic_handler]
-fn panic(info_: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     use cortex_m::interrupt;
     interrupt::disable();
     loop {

@@ -18,9 +18,6 @@ use panic_rtt_target as _;
 #[cfg(not(debug_assertions))]
 mod panic_handler;
 
-#[cfg(not(debug_assertions))]
-use panic as _;
-
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
 
@@ -39,6 +36,7 @@ use stm32f4xx_hal::{
 use cobs_stream::CobsDecoder;
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
 use stm32f4xx_hal::gpio::AlternateOD;
+use jrk_g2_rs::JrkG2;
 // use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
@@ -116,7 +114,7 @@ const APP: () = {
         motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
         rx_buffer: CobsDecoder,
-        jrk: JrkI2c2
+        jrk: JrkI2c2,
     }
 
     #[init]
@@ -201,7 +199,7 @@ const APP: () = {
             },
             clocks,
         )
-        .unwrap();
+            .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
@@ -259,7 +257,6 @@ const APP: () = {
         let i2c = stm32f4xx_hal::i2c::I2c::i2c2(context.device.I2C2, (sda, scl), 100.khz(), clocks);
         let jrk: JrkI2c2 = JrkI2c2::new(i2c);
 
-
         // allocate RX buffer statically
         let mut buf = cobs_stream::Buffer::new();
         // and ensure its actually that size by filling it with sentinels
@@ -283,7 +280,7 @@ const APP: () = {
             motor_counts,
             uart4,
             rx_buffer,
-            jrk
+            jrk,
         }
     }
     #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
@@ -312,7 +309,7 @@ const APP: () = {
             counts_ptr.south_west.count = sw_current.into();
         });
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors, jrk], priority = 10)]
     fn uart4_on_rxne(mut context: uart4_on_rxne::Context) {
         let connection: &mut Uart4 = context.resources.uart4;
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
@@ -402,6 +399,26 @@ const APP: () = {
                                             data: None,
                                         }
                                     }
+                                    rover_postcards::RequestKind::SetArmPose(pose) => {
+                                        let jrk: &mut JrkI2c2 = context.resources.jrk;
+                                        let result =set_jrk_pose(jrk, pose);
+                                        if let Ok(()) = result{
+                                            rover_postcards::Response {
+                                                status: rover_postcards::Status::OK,
+                                                state: request.state,
+                                                data: None,
+                                            }
+                                        } else {
+                                            #[cfg(debug_assertions)]
+                                            rprintln!("failed to set JRK state due to {:?}", result.err());
+                                            rover_postcards::Response {
+                                                status: rover_postcards::Status::ERROR,
+                                                state: request.state,
+                                                data: None
+                                            }
+                                        }
+
+                                    }
 
                                     _ => Response {
                                         status: rover_postcards::Status::Unimplemented,
@@ -439,4 +456,16 @@ fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
     let new_range = new_max - new_min;
     let new_value = (((value - old_min) * new_range) / old_range) + new_min;
     new_value as u16
+}
+
+
+fn set_jrk_pose(jrk: &mut JrkI2c2, pose: rover_postcards::KinematicArmPose) -> Result<(), stm32f4xx_hal::i2c::Error> {
+    jrk.set_device(11);
+    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.rotation_axis))?;
+    jrk.set_device(12);
+    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.upper_axis))?;
+    jrk.set_device(13);
+    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.lower_axis))?;
+    jrk.set_device(14);
+    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.central_axis))
 }
