@@ -38,7 +38,7 @@ use stm32f4xx_hal::{
 
 use cobs_stream::CobsDecoder;
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
-
+use stm32f4xx_hal::gpio::AlternateOD;
 // use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
@@ -58,6 +58,13 @@ type EncoderSWPinB = gpio::gpiob::PB7<Alternate<AF2>>;
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
+
+// can't use I2C 1 because all the pins are consumed by other peripherals
+// so we use I2C 2 as it has available pins
+type I2c2Sda = gpio::gpiob::PB10<AlternateOD<gpio::AF4>>;
+type I2c2Scl = gpio::gpiob::PB11<AlternateOD<gpio::AF4>>;
+type I2c2 = stm32f4xx_hal::i2c::I2c<stm32f4xx_hal::stm32::I2C2, (I2c2Sda, I2c2Scl)>;
+type JrkI2c2 = jrk_g2_rs::JrkG2I2c<I2c2>;
 
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
@@ -109,6 +116,7 @@ const APP: () = {
         motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
         rx_buffer: CobsDecoder,
+        jrk: JrkI2c2
     }
 
     #[init]
@@ -243,6 +251,15 @@ const APP: () = {
         motors.south_west.enable();
         motors.south_east.enable();
 
+        // configure peripheral I2C2
+        // These pins are expected to be in open drain mode.
+        let sda: I2c2Sda = gpiob.pb10.into_alternate_af4_open_drain();
+        let scl: I2c2Scl = gpiob.pb11.into_alternate_af4_open_drain();
+
+        let i2c = stm32f4xx_hal::i2c::I2c::i2c2(context.device.I2C2, (sda, scl), 100.khz(), clocks);
+        let jrk: JrkI2c2 = JrkI2c2::new(i2c);
+
+
         // allocate RX buffer statically
         let mut buf = cobs_stream::Buffer::new();
         // and ensure its actually that size by filling it with sentinels
@@ -266,6 +283,7 @@ const APP: () = {
             motor_counts,
             uart4,
             rx_buffer,
+            jrk
         }
     }
     #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
