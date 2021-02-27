@@ -325,8 +325,8 @@ checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
 
 [[package]]
 name = "rover_postcards"
-version = "0.3.1"
-source = "git+ssh://git@gitlab.com/saddeback_rover_2020/telecom/postcards.git?branch=master#82f02a34b552163d66922c8966d262f265702fca"
+version = "0.4.0"
+source = "git+ssh://git@gitlab.com/saddeback_rover_2020/telecom/postcards.git?branch=master#a0e93a4f27dbef2ad003f4626c2d6eb5a5a79b2a"
 dependencies = [
  "postcard",
  "postcard-cobs",

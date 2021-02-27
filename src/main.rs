@@ -461,11 +461,22 @@ fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
 
 fn set_jrk_pose(jrk: &mut JrkI2c2, pose: rover_postcards::KinematicArmPose) -> Result<(), stm32f4xx_hal::i2c::Error> {
     jrk.set_device(11);
-    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.rotation_axis))?;
-    jrk.set_device(12);
-    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.upper_axis))?;
-    jrk.set_device(13);
-    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.lower_axis))?;
-    jrk.set_device(14);
-    jrk.set_target(to_scale(u16::MAX, u16::MIN, pose.central_axis))
+    if let Some(rotation_axis) = pose.rotation_axis{
+        jrk.set_target(to_scale(u16::MAX, u16::MIN, rotation_axis))?;
+    }
+    if let Some(upper_axis) = pose.upper_axis{
+        jrk.set_device(12);
+        jrk.set_target(to_scale(u16::MAX, u16::MIN, upper_axis))?;
+    }
+    if let Some(lower_axis) = pose.lower_axis{
+        jrk.set_device(13);
+        jrk.set_target(to_scale(u16::MAX, u16::MIN, lower_axis))?;
+    }
+
+    if let Some(pitch_axis) = pose.pitch_axis{
+        jrk.set_device(14);
+        jrk.set_target(to_scale(u16::MAX, u16::MIN, pitch_axis))?;
+    }
+    Ok(())
+
 }
