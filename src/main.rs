@@ -459,6 +459,8 @@ fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
 }
 
 
+/// sets the set-point of the JRKs based on their state in the passed pose
+/// if the pose for a specific axis is None, no action is performed for that axis.
 fn set_jrk_pose(jrk: &mut JrkI2c2, pose: rover_postcards::KinematicArmPose) -> Result<(), stm32f4xx_hal::i2c::Error> {
     jrk.set_device(11);
     if let Some(rotation_axis) = pose.rotation_axis{
