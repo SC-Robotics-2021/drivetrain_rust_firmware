@@ -38,24 +38,21 @@ impl<PINS> PwmInput<TIM8, PINS> {
                 w.cc1s().ti1()
                 // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1 register (TI1 selected).
                 .cc2s().ti1()
+                    // input filtration
+                    .ic1f().bits(50)
+                    .ic2f().bits(50)
+                    // disable prescaler 1
+                    .ic1psc().bits(0)
+                    // disable prescaler 2
+                    .ic2psc().bits(0)
             });
-
-        tim.ccmr1_input().write(|w|  unsafe {
-            // set filtering function to 5 clocks
-            w.ic1f().bits(1)
-                .ic2f().bits(1)
-                // disable prescaler 1
-                .ic1psc().bits(0)
-                // disable prescaler 2
-                .ic2psc().bits(0)
-        });
 
         // enable and configure to capture on rising edge
         tim.ccer.write(|w| {
             // Select the active polarity for TI1FP1
             // (used both for capture in TIMx_CCR1 and counter clear):
             // write the CC1P and CC1NP bits to ‘0’ (active on rising edge).
-            w
+            w.cc1e().set_bit().cc2e().set_bit()
                 .cc1np()
                 .clear_bit()
                 .cc1p()
@@ -70,7 +67,7 @@ impl<PINS> PwmInput<TIM8, PINS> {
 
         // some chip variants declare `.bits()` as unsafe, some don't
         #[allow(unused_unsafe)]
-        tim.smcr.write(|w| unsafe {
+        tim.smcr.write(|w|  {
             w
                 // Select the valid trigger input: write the TS bits to 101 in the TIMx_SMCR register
                 // (TI1FP1 selected).
@@ -80,10 +77,11 @@ impl<PINS> PwmInput<TIM8, PINS> {
                 .sms().reset_mode()
                 // .bits(0b100)
         });
-        #[allow(unused_unsafe)]
-        tim.ccer
-            .write(|w| unsafe { w.cc1e().set_bit().cc2e().set_bit() });
 
+        // enable
+        tim.dier.write(|w| {
+            w.cc2ie().set_bit()
+        });
         PwmInput { tim, pins }
     }
 

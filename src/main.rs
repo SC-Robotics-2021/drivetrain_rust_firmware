@@ -297,7 +297,7 @@ const APP: () = {
             pwm_reader,
         }
     }
-    #[task(binds = TIM6_DAC, resources = [encoders, motor_counts, pwm_reader], priority = 3)]
+    #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
     fn tim6_interrupt(context: tim6_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
         // acquire all encoder states FIRST to ensure an accurate snapshot
@@ -310,12 +310,7 @@ const APP: () = {
         // prevent concurrent access while these variables are getting updated.
         // #[cfg(debug_assertions)]
         // rprintln!("updating counts...");
-        let reader: &mut PwmRead = context.resources.pwm_reader;
 
-        rprintln!("Fetching duty cycle & period...");
-        let duty_cycle = reader.get_duty_cycle();
-        let period = reader.get_period();
-        rprintln!("duty_cycle := {:?}; period := {:?}", duty_cycle, period);
 
         counts_ptr.lock(|counts_ptr| {
             // critical section
@@ -329,6 +324,19 @@ const APP: () = {
             counts_ptr.south_west.count = sw_current.into();
         });
     }
+
+    #[task(binds = TIM8_CC, resources = [pwm_reader], priority = 3)]
+    fn on_tim8(context: on_tim8::Context){
+        let reader: &mut PwmRead = context.resources.pwm_reader;
+
+        let duty_cycle = reader.get_duty_cycle();
+        // if duty_cycle == 0{
+        //     return;
+        // };
+        let period = reader.get_period();
+        rprintln!("duty_cycle := {:?}; period := {:?}", duty_cycle, period);
+    }
+
     #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors, jrk], priority = 10)]
     fn uart4_on_rxne(mut context: uart4_on_rxne::Context) {
         let connection: &mut Uart4 = context.resources.uart4;
