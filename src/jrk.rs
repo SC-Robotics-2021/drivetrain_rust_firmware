@@ -13,22 +13,24 @@ use crate::utilities::to_scale;
 #[allow(dead_code)] // hopefully this stuff is used, but its not the end of the world if its not.
 pub enum JrkMapping {
     Default,
-    Pitch,
-    Rotation,
+    GripperPitch,
+    GripRotation,
     Grip,
     UpperAxis,
     LowerAxis,
+    Azimuth,
 }
 
 impl Into<u8> for JrkMapping {
     fn into(self) -> u8 {
         match self {
             JrkMapping::Default => 11,
-            JrkMapping::Pitch => 12,
-            JrkMapping::Rotation => 13,
+            JrkMapping::GripperPitch => 12,
+            JrkMapping::GripRotation => 13,
             JrkMapping::Grip => 14,
             JrkMapping::UpperAxis => 15,
             JrkMapping::LowerAxis => 16,
+            JrkMapping::Azimuth => 17
         }
     }
 }
@@ -39,8 +41,14 @@ pub fn set_jrk_pose(
     jrk: &mut JrkI2c2,
     pose: rover_postcards::KinematicArmPose,
 ) -> Result<(), stm32f4xx_hal::i2c::Error> {
-    if let Some(rotation_axis) = pose.rotation_axis {
-        set_jrk(jrk, JrkMapping::Rotation, rotation_axis)?;
+    if let Some(rotation_axis) = pose.grip.rotation_axis {
+        set_jrk(jrk, JrkMapping::GripRotation, rotation_axis)?;
+    }
+    if let Some(pitch_axis) = pose.grip.pitch_axis {
+        set_jrk(jrk, JrkMapping::GripperPitch, pitch_axis)?;
+    }
+    if let Some(grip) = pose.grip.gripper_axis {
+        set_jrk(jrk, JrkMapping::Grip, grip)?;
     }
     if let Some(upper_axis) = pose.upper_axis {
         set_jrk(jrk, JrkMapping::UpperAxis, upper_axis)?;
@@ -48,10 +56,11 @@ pub fn set_jrk_pose(
     if let Some(lower_axis) = pose.lower_axis {
         set_jrk(jrk, JrkMapping::LowerAxis, lower_axis)?;
     }
+    // TODO: i don't trust binding this until the rest of the system is proven safe.
+    // if let Some(azimuth) = pose.rotation_axis {
+    //     set_jrk(jrk, JrkMapping::Azimuth, azimuth)?;
+    // }
 
-    if let Some(pitch_axis) = pose.pitch_axis {
-        set_jrk(jrk, JrkMapping::Pitch, pitch_axis)?;
-    }
     Ok(())
 }
 
