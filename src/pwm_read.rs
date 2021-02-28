@@ -10,11 +10,11 @@ pub struct PwmInput<TIM, PINS> {
 
 pub trait Pins<TIM> {}
 
+
 // implement the `Pins` trait wherever PC1 implements PinC1 and PC2 implements PinC2 for the given TIMer
-impl<TIM, PC1, PC2> Pins<TIM> for (PC1, PC2)
+impl<TIM, PC1> Pins<TIM> for PC1
 where
     PC1: PinC1<TIM>,
-    PC2: PinC2<TIM>,
 {
 }
 
@@ -32,17 +32,31 @@ impl<PINS> PwmInput<TIM8, PINS> {
         rcc.apb2rstr.modify(|_, w| w.tim8rst().clear_bit());
 
         // Configure TxC1 and TxC2 as captures
-        tim.ccmr1_output()
-            // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1 register (TI1 selected).
-            // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1 register (TI1 selected).
-            .write(|w| unsafe { w.cc1s().bits(0b01).cc2s().bits(0b10) });
+        tim.ccmr1_input()
+            .write(|w| unsafe {
+                // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1 register (TI1 selected).
+                w.cc1s().ti1()
+                // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1 register (TI1 selected).
+                .cc2s().ti1()
+            });
+
+        tim.ccmr1_input().write(|w|  unsafe {
+            // set filtering function to 5 clocks
+            w.ic1f().bits(1)
+                .ic2f().bits(1)
+                // disable prescaler 1
+                .ic1psc().bits(0)
+                // disable prescaler 2
+                .ic2psc().bits(0)
+        });
 
         // enable and configure to capture on rising edge
         tim.ccer.write(|w| {
             // Select the active polarity for TI1FP1
             // (used both for capture in TIMx_CCR1 and counter clear):
             // write the CC1P and CC1NP bits to ‘0’ (active on rising edge).
-            w.cc1np()
+            w
+                .cc1np()
                 .clear_bit()
                 .cc1p()
                 .clear_bit()
@@ -60,20 +74,15 @@ impl<PINS> PwmInput<TIM8, PINS> {
             w
                 // Select the valid trigger input: write the TS bits to 101 in the TIMx_SMCR register
                 // (TI1FP1 selected).
-                .ts()
-                .bits(0b101)
+                .ts().ti1fp1()
+                // .bits(0b101)
                 // Configure the slave mode controller in reset mode: write the SMS bits to 100 in the TIMx_SMCR register.
-                .sms()
-                .bits(0b100)
+                .sms().reset_mode()
+                // .bits(0b100)
         });
         #[allow(unused_unsafe)]
         tim.ccer
             .write(|w| unsafe { w.cc1e().set_bit().cc2e().set_bit() });
-
-        // auto reload register
-        // tim.arr.write(|w| unsafe { w.bits(core::u32::MAX) });
-        // counter enable
-        // tim.cr1.write(|w| w.cen().set_bit());
 
         PwmInput { tim, pins }
     }
@@ -84,9 +93,10 @@ impl<PINS> PwmInput<TIM8, PINS> {
     }
 
     pub fn get_period(&self) -> u16 {
-        self.tim.ccr1.read().bits() as u16
+        self.tim.ccr1.read().ccr().bits()
+
     }
     pub fn get_duty_cycle(&self) -> u16 {
-        self.tim.ccr2.read().bits() as u16
+        self.tim.ccr2.read().ccr().bits()
     }
 }

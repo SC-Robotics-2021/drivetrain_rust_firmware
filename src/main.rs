@@ -65,8 +65,7 @@ type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
 type Tim8C1 = gpio::gpioc::PC6<gpio::Alternate<gpio::AF3>>;
-type Tim8C2 = gpio::gpioc::PC7<gpio::Alternate<gpio::AF3>>;
-type PwmRead = crate::pwm_read::PwmInput<stm32f4xx_hal::stm32::TIM8, (Tim8C1, Tim8C2)>;
+type PwmRead = crate::pwm_read::PwmInput<stm32f4xx_hal::stm32::TIM8, Tim8C1>;
 
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
@@ -146,8 +145,8 @@ const APP: () = {
             w.dbg_standby().set_bit();
             w.dbg_stop().set_bit()
         });
-
-        let rcc = context.device.RCC.constrain();
+        let rcc: stm32f4xx_hal::stm32::RCC = context.device.RCC;
+        let rcc = rcc.constrain();
         let clocks = rcc.cfgr.freeze();
         // Create a delay abstraction based on SysTick
         let _delay = Delay::new(context.core.SYST, clocks);
@@ -241,12 +240,14 @@ const APP: () = {
         // create PwmInput which will be used for PWM Input (see 16.3.7 of the Reference Manual)
 
         let tim8c1: Tim8C1 = gpioc.pc6.into_alternate_af3(); // TIM8 Channel 1
-        let tim8c2: Tim8C2 = gpioc.pc7.into_alternate_af3(); // TIM8 Channel 1
 
-        let pwm_reader = PwmRead::tim8(context.device.TIM8, (tim8c1, tim8c2));
+        let pwm_reader = PwmRead::tim8(context.device.TIM8, tim8c1);
 
         // The midpoint of the motors, which translates to a stop signal.
         let stop: u16 = utilities::to_scale(max_duty, min_duty, 0.0);
+
+        #[cfg(debug_assertions)]
+        rprintln!("Stop duty cycle := {:?}", stop);
 
         // Initialize drive motors to STOP/IDLE
         // Note: if Break/Coast = TRUE { STOP } else { IDLE }
@@ -296,7 +297,7 @@ const APP: () = {
             pwm_reader,
         }
     }
-    #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
+    #[task(binds = TIM6_DAC, resources = [encoders, motor_counts, pwm_reader], priority = 3)]
     fn tim6_interrupt(context: tim6_interrupt::Context) {
         // handle interrupts from TIM3, telling us to look at the encoders.
         // acquire all encoder states FIRST to ensure an accurate snapshot
@@ -309,6 +310,12 @@ const APP: () = {
         // prevent concurrent access while these variables are getting updated.
         // #[cfg(debug_assertions)]
         // rprintln!("updating counts...");
+        let reader: &mut PwmRead = context.resources.pwm_reader;
+
+        rprintln!("Fetching duty cycle & period...");
+        let duty_cycle = reader.get_duty_cycle();
+        let period = reader.get_period();
+        rprintln!("duty_cycle := {:?}; period := {:?}", duty_cycle, period);
 
         counts_ptr.lock(|counts_ptr| {
             // critical section
