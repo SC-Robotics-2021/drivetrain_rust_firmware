@@ -18,6 +18,9 @@ use panic_rtt_target as _;
 #[cfg(not(debug_assertions))]
 mod panic_handler;
 
+mod jrk;
+mod utilities;
+
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
 
@@ -34,9 +37,10 @@ use stm32f4xx_hal::{
 };
 
 use cobs_stream::CobsDecoder;
+use jrk::{set_jrk_pose, I2c2Scl, I2c2Sda, JrkI2c2};
+use jrk_g2_rs::JrkG2;
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
 use stm32f4xx_hal::gpio::AlternateOD;
-use jrk_g2_rs::JrkG2;
 // use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
@@ -57,13 +61,6 @@ type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
 
-// can't use I2C 1 because all the pins are consumed by other peripherals
-// so we use I2C 2 as it has available pins
-type I2c2Sda = gpio::gpiob::PB10<AlternateOD<gpio::AF4>>;
-type I2c2Scl = gpio::gpiob::PB11<AlternateOD<gpio::AF4>>;
-type I2c2 = stm32f4xx_hal::i2c::I2c<stm32f4xx_hal::stm32::I2C2, (I2c2Sda, I2c2Scl)>;
-type JrkI2c2 = jrk_g2_rs::JrkG2I2c<I2c2>;
-
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
     north_east: pwm::PwmChannels<TIM1, pwm::C2>,
@@ -76,13 +73,13 @@ impl MotorPwm {
         let (max_duty, min_duty) = self.get_bounds();
 
         self.north_east
-            .set_duty(to_scale(max_duty, min_duty, target));
+            .set_duty(utilities::to_scale(max_duty, min_duty, target));
         self.south_east
-            .set_duty(to_scale(max_duty, min_duty, target * -1.0));
+            .set_duty(utilities::to_scale(max_duty, min_duty, target * -1.0));
     }
     pub fn set_left_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
-        let setpoint = to_scale(max_duty, min_duty, target);
+        let setpoint = utilities::to_scale(max_duty, min_duty, target);
         self.north_west.set_duty(setpoint);
         self.south_west.set_duty(setpoint);
     }
@@ -199,7 +196,7 @@ const APP: () = {
             },
             clocks,
         )
-            .unwrap();
+        .unwrap();
         // listen for incoming packets
         uart4.listen(serial::Event::Rxne);
         // Hello world!
@@ -234,7 +231,7 @@ const APP: () = {
         timer.listen(timer::Event::TimeOut);
 
         // The midpoint of the motors, which translates to a stop signal.
-        let stop: u16 = to_scale(max_duty, min_duty, 0.0);
+        let stop: u16 = utilities::to_scale(max_duty, min_duty, 0.0);
 
         // Initialize drive motors to STOP/IDLE
         // Note: if Break/Coast = TRUE { STOP } else { IDLE }
@@ -401,8 +398,8 @@ const APP: () = {
                                     }
                                     rover_postcards::RequestKind::SetArmPose(pose) => {
                                         let jrk: &mut JrkI2c2 = context.resources.jrk;
-                                        let result =set_jrk_pose(jrk, pose);
-                                        if let Ok(()) = result{
+                                        let result = set_jrk_pose(jrk, pose);
+                                        if let Ok(()) = result {
                                             rover_postcards::Response {
                                                 status: rover_postcards::Status::OK,
                                                 state: request.state,
@@ -410,14 +407,16 @@ const APP: () = {
                                             }
                                         } else {
                                             #[cfg(debug_assertions)]
-                                            rprintln!("failed to set JRK state due to {:?}", result.err());
+                                            rprintln!(
+                                                "failed to set JRK state due to {:?}",
+                                                result.err()
+                                            );
                                             rover_postcards::Response {
                                                 status: rover_postcards::Status::ERROR,
                                                 state: request.state,
-                                                data: None
+                                                data: None,
                                             }
                                         }
-
                                     }
 
                                     _ => Response {
@@ -444,41 +443,3 @@ const APP: () = {
         }
     }
 };
-
-/// Convert `value` from [-1,1] to [new_min, new_max]
-fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
-    let new_max = new_max as f32;
-    let new_min = new_min as f32;
-    let value = value as f32;
-    let old_min: f32 = -1.0;
-    let old_max: f32 = 1.0;
-    let old_range = old_max - old_min; // 1- -1
-    let new_range = new_max - new_min;
-    let new_value = (((value - old_min) * new_range) / old_range) + new_min;
-    new_value as u16
-}
-
-
-/// sets the set-point of the JRKs based on their state in the passed pose
-/// if the pose for a specific axis is None, no action is performed for that axis.
-fn set_jrk_pose(jrk: &mut JrkI2c2, pose: rover_postcards::KinematicArmPose) -> Result<(), stm32f4xx_hal::i2c::Error> {
-    jrk.set_device(11);
-    if let Some(rotation_axis) = pose.rotation_axis{
-        jrk.set_target(to_scale(u16::MAX, u16::MIN, rotation_axis))?;
-    }
-    if let Some(upper_axis) = pose.upper_axis{
-        jrk.set_device(12);
-        jrk.set_target(to_scale(u16::MAX, u16::MIN, upper_axis))?;
-    }
-    if let Some(lower_axis) = pose.lower_axis{
-        jrk.set_device(13);
-        jrk.set_target(to_scale(u16::MAX, u16::MIN, lower_axis))?;
-    }
-
-    if let Some(pitch_axis) = pose.pitch_axis{
-        jrk.set_device(14);
-        jrk.set_target(to_scale(u16::MAX, u16::MIN, pitch_axis))?;
-    }
-    Ok(())
-
-}
