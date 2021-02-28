@@ -30,7 +30,7 @@ impl Into<u8> for JrkMapping {
             JrkMapping::Grip => 14,
             JrkMapping::UpperAxis => 15,
             JrkMapping::LowerAxis => 16,
-            JrkMapping::Azimuth => 17
+            JrkMapping::Azimuth => 17,
         }
     }
 }
@@ -65,7 +65,11 @@ pub fn set_jrk_pose(
 }
 
 /// sets an individual JRK based on its I2C address.
-fn set_jrk(jrk: &mut JrkI2c2, target: JrkMapping, value: f32) -> Result<(), stm32f4xx_hal::i2c::Error> {
+fn set_jrk(
+    jrk: &mut JrkI2c2,
+    target: JrkMapping,
+    value: f32,
+) -> Result<(), stm32f4xx_hal::i2c::Error> {
     jrk.set_device(target.into());
     jrk.set_target(to_scale(u16::MAX, u16::MIN, value))?;
 

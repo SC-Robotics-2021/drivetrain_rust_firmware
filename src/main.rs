@@ -36,6 +36,9 @@ use stm32f4xx_hal::{
     pwm, qei, serial, timer,
 };
 
+#[allow(unsafe_code)]
+mod pwm_read;
+
 use cobs_stream::CobsDecoder;
 use jrk::{set_jrk_pose, I2c2Scl, I2c2Sda, JrkI2c2};
 use jrk_g2_rs::JrkG2;
@@ -60,6 +63,10 @@ type EncoderSWPinB = gpio::gpiob::PB7<Alternate<AF2>>;
 type Uart4Tx = gpio::gpioc::PC10<gpio::Alternate<gpio::AF8>>;
 type Uart4Rx = gpio::gpioc::PC11<gpio::Alternate<gpio::AF8>>;
 type Uart4 = serial::Serial<stm32f4::stm32f446::UART4, (Uart4Tx, Uart4Rx)>;
+
+type Tim8C1 = gpio::gpioc::PC6<gpio::Alternate<gpio::AF3>>;
+type Tim8C2 = gpio::gpioc::PC7<gpio::Alternate<gpio::AF3>>;
+type PwmRead = crate::pwm_read::PwmInput<stm32f4xx_hal::stm32::TIM8, (Tim8C1, Tim8C2)>;
 
 pub struct MotorPwm {
     north_west: pwm::PwmChannels<TIM1, pwm::C1>,
@@ -112,6 +119,7 @@ const APP: () = {
         uart4: Uart4,
         rx_buffer: CobsDecoder,
         jrk: JrkI2c2,
+        pwm_reader: PwmRead,
     }
 
     #[init]
@@ -230,6 +238,13 @@ const APP: () = {
         // and be sure to listen for its ticks.
         timer.listen(timer::Event::TimeOut);
 
+        // create PwmInput which will be used for PWM Input (see 16.3.7 of the Reference Manual)
+
+        let tim8c1: Tim8C1 = gpioc.pc6.into_alternate_af3(); // TIM8 Channel 1
+        let tim8c2: Tim8C2 = gpioc.pc7.into_alternate_af3(); // TIM8 Channel 1
+
+        let pwm_reader = PwmRead::tim8(context.device.TIM8, (tim8c1, tim8c2));
+
         // The midpoint of the motors, which translates to a stop signal.
         let stop: u16 = utilities::to_scale(max_duty, min_duty, 0.0);
 
@@ -278,6 +293,7 @@ const APP: () = {
             uart4,
             rx_buffer,
             jrk,
+            pwm_reader,
         }
     }
     #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
