@@ -31,52 +31,51 @@ impl<PINS> PwmInput<TIM8, PINS> {
         rcc.apb2rstr.modify(|_, w| w.tim8rst().set_bit());
         rcc.apb2rstr.modify(|_, w| w.tim8rst().clear_bit());
 
-        // Configure TxC1 and TxC2 as captures
-        tim.ccmr1_input()
-            .modify (|_, w| unsafe {
-                // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1 register (TI1 selected).
-                w.cc1s().ti1()
-                // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1 register (TI1 selected).
-                .cc2s().ti1()
-                    // input filtration
-                    .ic1f().bits(50)
-                    .ic2f().bits(50)
-                    // disable prescaler 1
-                    .ic1psc().bits(0)
-                    // disable prescaler 2
-                    .ic2psc().bits(0)
-            });
+        // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1
+        // register (TI1 selected).
 
-        // enable and configure to capture on rising edge
-        tim.ccer.modify(|_,w| {
-            // Select the active polarity for TI1FP1
-            // (used both for capture in TIMx_CCR1 and counter clear):
-            // write the CC1P and CC1NP bits to ‘0’ (active on rising edge).
+        tim.ccmr1_input().modify(|_,w| {
+            w.cc1s().ti1()
+        });
+
+        // Select the active polarity for TI1FP1 (used both for capture in TIMx_CCR1 and counter
+        // clear): write the CC1P and CC1NP bits to ‘0’ (active on rising edge).
+
+        tim.ccer.modify(|_, w| {
+            w.cc1p().clear_bit().cc2p().clear_bit()
+        } );
+
+        // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1
+        // register (TI1 selected)
+        tim.ccmr1_input().modify(|_, w| {
+            w.cc2s().ti1()
+        });
+
+        // Select the active polarity for TI1FP2 (used for capture in TIMx_CCR2): write the CC2P
+        // and CC2NP bits to ‘1’ (active on falling edge).
+        tim.ccer.modify(|_, w| {
+            w.cc2p().set_bit().cc2np().set_bit()
+        });
+
+        // Select the valid trigger input: write the TS bits to 101 in the TIMx_SMCR register
+        // (TI1FP1 selected).
+        tim.smcr.modify(|_, w| {
+            w.ts().ti1fp1()
+        });
+
+        // Configure the slave mode controller in reset mode: write the SMS bits to 100 in the
+        // TIMx_SMCR register.
+        tim.smcr.modify(|_, w| {
+            w.sms().reset_mode()
+        }
+        );
+
+        // Enable the captures: write the CC1E and CC2E bits to ‘1’ in the TIMx_CCER register.
+        tim.ccer.modify(|_, w| {
             w.cc1e().set_bit().cc2e().set_bit()
-                .cc1np()
-                .clear_bit()
-                .cc1p()
-                .clear_bit()
-                // Select the active polarity for TI1FP2 (used for capture in TIMx_CCR2): write the
-                // CC2P and CC2NP bits to ‘1’ (active on falling edge).
-                .cc2np()
-                .set_bit()
-                .cc2p()
-                .set_bit()
         });
 
-        tim.smcr.modify(|_, w|  {
-            w
-                // Select the valid trigger input: write the TS bits to 101 in the TIMx_SMCR register
-                // (TI1FP1 selected).
-                .ts().ti1fp1()
-                // .bits(0b101)
-                // Configure the slave mode controller in reset mode: write the SMS bits to 100 in the TIMx_SMCR register.
-                .sms().reset_mode()
-                // .bits(0b100)
-        });
-
-        // enable
+        // enable interrupts.
         tim.dier.modify(|_, w| {
             w.cc2ie().set_bit()
         });
