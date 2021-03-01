@@ -33,7 +33,7 @@ impl<PINS> PwmInput<TIM8, PINS> {
 
         // Configure TxC1 and TxC2 as captures
         tim.ccmr1_input()
-            .write(|w| unsafe {
+            .modify (|_, w| unsafe {
                 // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1 register (TI1 selected).
                 w.cc1s().ti1()
                 // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1 register (TI1 selected).
@@ -48,7 +48,7 @@ impl<PINS> PwmInput<TIM8, PINS> {
             });
 
         // enable and configure to capture on rising edge
-        tim.ccer.write(|w| {
+        tim.ccer.modify(|_,w| {
             // Select the active polarity for TI1FP1
             // (used both for capture in TIMx_CCR1 and counter clear):
             // write the CC1P and CC1NP bits to ‘0’ (active on rising edge).
@@ -65,9 +65,7 @@ impl<PINS> PwmInput<TIM8, PINS> {
                 .set_bit()
         });
 
-        // some chip variants declare `.bits()` as unsafe, some don't
-        #[allow(unused_unsafe)]
-        tim.smcr.write(|w|  {
+        tim.smcr.modify(|_, w|  {
             w
                 // Select the valid trigger input: write the TS bits to 101 in the TIMx_SMCR register
                 // (TI1FP1 selected).
@@ -79,7 +77,7 @@ impl<PINS> PwmInput<TIM8, PINS> {
         });
 
         // enable
-        tim.dier.write(|w| {
+        tim.dier.modify(|_, w| {
             w.cc2ie().set_bit()
         });
         PwmInput { tim, pins }
