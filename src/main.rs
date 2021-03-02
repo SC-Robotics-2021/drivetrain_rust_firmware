@@ -242,8 +242,12 @@ const APP: () = {
         let tim8c1: Tim8C1 = gpioc.pc6.into_alternate_af3(); // TIM8 Channel 1
 
         // in order to reduce code reuse... we are gunna do something hacky.
+        // HACK: use the existing timer infrastructure to pre-configure the timer
+        //  such that it has approximately correct frequency settings
+        //  we achieve this by constructing a normal timer and reclaiming the device.
+        //  this has the side effect of giving us a timer configured with a 'decent' frequency
         let mut tim8 = timer::Timer::tim8(context.device.TIM8,  400.hz(), clocks);
-        tim8.start(400.hz());
+        // we then pass this timer peripheral to our constructor, which re-configures the other timer fields.
         let pwm_reader = PwmRead::tim8(tim8.release(), tim8c1);
 
         // The midpoint of the motors, which translates to a stop signal.
