@@ -24,12 +24,12 @@ impl<PINS> PwmInput<TIM8, PINS> {
     where
         PINS: Pins<TIM8>,
     {
-        // NOTE(unsafe) this reference will only be used for atomic writes with no side effects.
-        let rcc = unsafe { &(*RCC::ptr()) };
-        // enable and reset clock.
-        rcc.apb2enr.modify(|_, w| w.tim8en().set_bit());
-        rcc.apb2rstr.modify(|_, w| w.tim8rst().set_bit());
-        rcc.apb2rstr.modify(|_, w| w.tim8rst().clear_bit());
+        // // NOTE(unsafe) this reference will only be used for atomic writes with no side effects.
+        // let rcc = unsafe { &(*RCC::ptr()) };
+        // // enable and reset clock.
+        // rcc.apb2enr.modify(|_, w| w.tim8en().set_bit());
+        // rcc.apb2rstr.modify(|_, w| w.tim8rst().set_bit());
+        // rcc.apb2rstr.modify(|_, w| w.tim8rst().clear_bit());
 
         // Select the active input for TIMx_CCR1: write the CC1S bits to 01 in the TIMx_CCMR1
         // register (TI1 selected).
@@ -44,6 +44,12 @@ impl<PINS> PwmInput<TIM8, PINS> {
         tim.ccer.modify(|_, w| {
             w.cc1p().clear_bit().cc2p().clear_bit()
         } );
+
+        // set filters
+        tim.ccmr1_input().modify(|_, w| unsafe {
+            w.ic1f().no_filter().ic2f().bits(0)
+                .ic1psc().bits(0).ic2psc().bits(0)
+        });
 
         // Select the active input for TIMx_CCR2: write the CC2S bits to 10 in the TIMx_CCMR1
         // register (TI1 selected)
@@ -79,6 +85,8 @@ impl<PINS> PwmInput<TIM8, PINS> {
         tim.dier.modify(|_, w| {
             w.cc2ie().set_bit()
         });
+        tim.cr1.modify(|_, w| {w.cen().enabled()});
+
         PwmInput { tim, pins }
     }
 

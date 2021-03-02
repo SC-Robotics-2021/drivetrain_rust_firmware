@@ -241,7 +241,10 @@ const APP: () = {
 
         let tim8c1: Tim8C1 = gpioc.pc6.into_alternate_af3(); // TIM8 Channel 1
 
-        let pwm_reader = PwmRead::tim8(context.device.TIM8, tim8c1);
+        // in order to reduce code reuse... we are gunna do something hacky.
+        let mut tim8 = timer::Timer::tim8(context.device.TIM8,  400.hz(), clocks);
+        tim8.start(400.hz());
+        let pwm_reader = PwmRead::tim8(tim8.release(), tim8c1);
 
         // The midpoint of the motors, which translates to a stop signal.
         let stop: u16 = utilities::to_scale(max_duty, min_duty, 0.0);
@@ -330,11 +333,12 @@ const APP: () = {
         let reader: &mut PwmRead = context.resources.pwm_reader;
 
         let duty_cycle = reader.get_duty_cycle();
-        // if duty_cycle == 0{
-        //     return;
-        // };
         let period = reader.get_period();
-        rprintln!("duty_cycle := {:?}; period := {:?}", duty_cycle, period);
+        if duty_cycle == period{
+            return;
+        };
+        let percent_duty = duty_cycle as f32 /period as f32;
+        rprintln!("duty_cycle := {:?}; period := {:?}; duty% := {:?}", duty_cycle, period, percent_duty);
     }
 
     #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors, jrk], priority = 10)]
