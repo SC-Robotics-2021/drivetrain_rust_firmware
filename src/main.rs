@@ -18,8 +18,8 @@ use panic_rtt_target as _;
 #[cfg(not(debug_assertions))]
 mod panic_handler;
 
-#[cfg(not(debug_assertions))]
-use panic as _;
+mod jrk;
+mod utilities;
 
 use postcard::{flavors, from_bytes_cobs, serialize_with_flavor, Error};
 use rtic::app;
@@ -37,8 +37,10 @@ use stm32f4xx_hal::{
 };
 
 use cobs_stream::CobsDecoder;
+use jrk::{set_jrk_pose, I2c2Scl, I2c2Sda, JrkI2c2};
+use jrk_g2_rs::JrkG2;
 use rover_postcards::{Request, RequestKind, Response, ResponseKind};
-
+use stm32f4xx_hal::gpio::AlternateOD;
 // use rover_postcards::AsCobs;
 
 // Type declaration crap so the resources can be shared...
@@ -71,13 +73,13 @@ impl MotorPwm {
         let (max_duty, min_duty) = self.get_bounds();
 
         self.north_east
-            .set_duty(to_scale(max_duty, min_duty, target));
+            .set_duty(utilities::to_scale(max_duty, min_duty, target));
         self.south_east
-            .set_duty(to_scale(max_duty, min_duty, target * -1.0));
+            .set_duty(utilities::to_scale(max_duty, min_duty, target * -1.0));
     }
     pub fn set_left_speed(&mut self, target: f32) {
         let (max_duty, min_duty) = self.get_bounds();
-        let setpoint = to_scale(max_duty, min_duty, target);
+        let setpoint = utilities::to_scale(max_duty, min_duty, target);
         self.north_west.set_duty(setpoint);
         self.south_west.set_duty(setpoint);
     }
@@ -109,6 +111,7 @@ const APP: () = {
         motor_counts: rover_postcards::MotorCounts,
         uart4: Uart4,
         rx_buffer: CobsDecoder,
+        jrk: JrkI2c2,
     }
 
     #[init]
@@ -228,7 +231,7 @@ const APP: () = {
         timer.listen(timer::Event::TimeOut);
 
         // The midpoint of the motors, which translates to a stop signal.
-        let stop: u16 = to_scale(max_duty, min_duty, 0.0);
+        let stop: u16 = utilities::to_scale(max_duty, min_duty, 0.0);
 
         // Initialize drive motors to STOP/IDLE
         // Note: if Break/Coast = TRUE { STOP } else { IDLE }
@@ -242,6 +245,14 @@ const APP: () = {
         motors.north_east.enable();
         motors.south_west.enable();
         motors.south_east.enable();
+
+        // configure peripheral I2C2
+        // These pins are expected to be in open drain mode.
+        let sda: I2c2Sda = gpiob.pb10.into_alternate_af4_open_drain();
+        let scl: I2c2Scl = gpiob.pb11.into_alternate_af4_open_drain();
+
+        let i2c = stm32f4xx_hal::i2c::I2c::i2c2(context.device.I2C2, (sda, scl), 100.khz(), clocks);
+        let jrk: JrkI2c2 = JrkI2c2::new(i2c);
 
         // allocate RX buffer statically
         let mut buf = cobs_stream::Buffer::new();
@@ -266,6 +277,7 @@ const APP: () = {
             motor_counts,
             uart4,
             rx_buffer,
+            jrk,
         }
     }
     #[task(binds = TIM6_DAC, resources = [encoders, motor_counts], priority = 3)]
@@ -294,7 +306,7 @@ const APP: () = {
             counts_ptr.south_west.count = sw_current.into();
         });
     }
-    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors], priority = 10)]
+    #[task(binds = UART4, resources = [uart4, rx_buffer, motor_counts, motors, jrk], priority = 10)]
     fn uart4_on_rxne(mut context: uart4_on_rxne::Context) {
         let connection: &mut Uart4 = context.resources.uart4;
         // these handlers need to be really quick or overruns can occur (NO SEMIHOSTING!)
@@ -384,6 +396,28 @@ const APP: () = {
                                             data: None,
                                         }
                                     }
+                                    rover_postcards::RequestKind::SetArmPose(pose) => {
+                                        let jrk: &mut JrkI2c2 = context.resources.jrk;
+                                        let result = set_jrk_pose(jrk, pose);
+                                        if let Ok(()) = result {
+                                            rover_postcards::Response {
+                                                status: rover_postcards::Status::OK,
+                                                state: request.state,
+                                                data: None,
+                                            }
+                                        } else {
+                                            #[cfg(debug_assertions)]
+                                            rprintln!(
+                                                "failed to set JRK state due to {:?}",
+                                                result.err()
+                                            );
+                                            rover_postcards::Response {
+                                                status: rover_postcards::Status::ERROR,
+                                                state: request.state,
+                                                data: None,
+                                            }
+                                        }
+                                    }
 
                                     _ => Response {
                                         status: rover_postcards::Status::Unimplemented,
@@ -409,16 +443,3 @@ const APP: () = {
         }
     }
 };
-
-/// Convert `value` from [-1,1] to [new_min, new_max]
-fn to_scale(new_max: u16, new_min: u16, value: f32) -> u16 {
-    let new_max = new_max as f32;
-    let new_min = new_min as f32;
-    let value = value as f32;
-    let old_min: f32 = -1.0;
-    let old_max: f32 = 1.0;
-    let old_range = old_max - old_min; // 1- -1
-    let new_range = new_max - new_min;
-    let new_value = (((value - old_min) * new_range) / old_range) + new_min;
-    new_value as u16
-}
